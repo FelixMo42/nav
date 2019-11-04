@@ -18,8 +18,6 @@ module.exports = function(graph, options) {
 
     function initNode(node) {
         let sprite = new PIXI.Graphics()
-        
-        console.log(node)
 
         sprite.x = node.data.x
         sprite.y = node.data.y
@@ -68,10 +66,6 @@ module.exports = function(graph, options) {
     function updateNode(node) {
         node.data.sprite.x = node.data.x
         node.data.sprite.y = node.data.y
-
-        graph.forEachLinkedNode(node.id, (to, link) => {
-            updateLink(link)
-        })
     }
 
     function initLink(link) {
@@ -106,6 +100,14 @@ module.exports = function(graph, options) {
         sprite.lineTo( to.x   , to.y   )
     }
 
+    function removeNode(node) {
+        stage.removeChild( node.data.sprite )
+    }
+
+    function removeLink(link) {
+        stage.removeChild( link.data.sprite )
+    }
+
     graph.on("changed", (events) => {
         for (let event of events) {
             if (event.changeType == "add") {
@@ -117,9 +119,27 @@ module.exports = function(graph, options) {
                 }
             }
 
-            if (event.changeType == "move") {
-                updateNode(event.node)
+            if (event.changeType == "remove") {
+                if ("node" in event && options.renderNodes) {
+                    removeNode(event.node)
+                }
+                if ("link" in event && options.renderLinks) {
+                    removeLink(event.link)
+                }
             }
+
+            if (event.changeType == "move") {
+                if (options.renderNodes) {
+                    updateNode(event.node)
+                }
+
+                if (options.renderLinks) {
+                    graph.forEachLinkedNode(event.node.id, (to, link) => {
+                        updateLink(link)
+                    })
+                }
+            }
+
         }
     })
 

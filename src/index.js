@@ -1,8 +1,10 @@
-const PIXI      = require("pixi.js")
-const Graph     = require('ngraph.graph')
-const Path      = require('ngraph.path')
+"use strict"
+
+const PIXI        = require("pixi.js")
+const Path        = require('ngraph.path')
+const Graph       = require('./ngraph.graph')
 const GraphSprite = require('./GraphSprite')
-const Vector    = require('./struc/Vector')
+const Vector      = require('./struc/Vector')
 
 const app = new PIXI.Application({
     width: window.innerWidth,
@@ -20,8 +22,6 @@ app.stage.addChild(graphSprite)
 // triangulation
 
 let rooms = []
-
-
 
 function area(x1, y1, x2, y2, x3, y3) {
     return Math.abs((x1 * (y2 - y3) + x2 * (y3 - y1) + x3 * (y1 - y2)) / 2.0) 
@@ -47,17 +47,64 @@ function distToLine(x1, y1, x2, y2, x, y) {
     return a.sub(p).sub( n.mul( a.sub(p).dot(n) ) ).mag()
 }
 
+function orientation(p1, p2, p3) {
+    let val = (p2.y - p1.y) * (p3.x - p2.x) - (p2.x - p1.x) * (p3.y - p2.y)
+
+    if (val == 0) return 0
+
+    return (val > 0)? 1: 2
+}
+
+function onSegment(p, q, r) {
+    if (q.x <= Math.max(p.x, r.x) && q.x >= Math.min(p.x, r.x) && 
+        q.y <= Math.max(p.y, r.y) && q.y >= Math.min(p.y, r.y)) {
+        return true
+    }
+  
+    return false
+}
+
+function intersect(p1, q1, p2, q2) {
+    //https://www.geeksforgeeks.org/check-if-two-given-line-segments-intersect/
+
+    let o1 = orientation(p1, q1, p2)
+    let o2 = orientation(p1, q1, q2)
+    let o3 = orientation(p2, q2, p1)
+    let o4 = orientation(p2, q2, q1)
+
+    if (o1 != o2 && o3 != o4) {
+        return true
+    }
+
+    if (o1 == 0 && onSegment(p1, p2, q1)) {
+        return true
+    }
+
+    // p1, q1 and q2 are colinear and q2 lies on segment p1q1 
+    if (o2 == 0 && onSegment(p1, q2, q1)) {
+        return true
+    }
+  
+    // p2, q2 and p1 are colinear and p1 lies on segment p2q2 
+    if (o3 == 0 && onSegment(p2, p1, q2)) {
+        return true
+    }
+  
+    // p2, q2 and q1 are colinear and q1 lies on segment p2q2 
+    if (o4 == 0 && onSegment(p2, q1, q2)) {
+        return true
+    }
+ 
+    return false
+}
+
 class Room {
     constructor(p1, p2, p3) {
         this.sprite = new PIXI.Graphics()
 
-        portals.addNode(p1.id, p1.data)
-        portals.addNode(p2.id, p2.data)
-        portals.addNode(p3.id, p3.data)
-
-        portals.addLink(p1.id, p2.id, {})
-        portals.addLink(p3.id, p2.id, {})
-        portals.addLink(p3.id, p1.id, {})
+        this.setUpLink(p1, p2)
+        this.setUpLink(p3, p2)
+        this.setUpLink(p3, p1)
         
         this.sprite.beginFill(0x000099)
         this.sprite.drawCircle(...center(
@@ -72,9 +119,45 @@ class Room {
         this.p1 = p1
         this.p2 = p2
         this.p3 = p3
+
+        p1.data.rooms.push( this )
+        p2.data.rooms.push( this )
+        p3.data.rooms.push( this )
+    }
+
+    setUpLink(a, b) {
+        let link = portals.getLink(a.id, b.id)
+
+        if (link) {
+            link.data.rooms.push(this)
+        } else {
+            portals.addLink(a.id, b.id, {rooms: [this]})
+        }
+
+        // console.log( a.id, b.id )
+        // console.log( portals.getLink(a.id, b.id).data.rooms )
+    }
+
+    clearLink(a, b) {
+        let link = portals.getLink(a.id, b.id)
+        link.data.rooms = link.data.rooms.filter( item => item != this )
+
+        if (link.data.rooms.length == 0) {
+            console.log(link)
+            console.log( graph.removeLink(link) )
+            console.log("123")
+        }
     }
 
     clear() {
+        this.p1.data.rooms = this.p1.data.rooms.filter( item => item != this )
+        this.p2.data.rooms = this.p2.data.rooms.filter( item => item != this )
+        this.p3.data.rooms = this.p3.data.rooms.filter( item => item != this )
+
+        this.clearLink(this.p1, this.p2)
+        this.clearLink(this.p3, this.p2)
+        this.clearLink(this.p3, this.p1)
+
         this.sprite.clear()
         this.sprite.render()
     }
@@ -118,7 +201,9 @@ class Room {
     }
 }
 
-let portals = Graph()
+let portals = Graph({
+    multigraph: false
+})
 let portalsSprite = GraphSprite(portals, {
     renderNodes: false,
     linkColor: 0x0000ff,
@@ -126,10 +211,44 @@ let portalsSprite = GraphSprite(portals, {
 })
 app.stage.addChild(portalsSprite)
 
+function roomMerge(link) {
+    let rooms = []
+    
+    for (let room of graph.getNode(link.toId).data.rooms) {
+        let nodes = []
+
+        if ( room.p1.id != link.toId ) { nodes.push(room.p1) }
+        if ( room.p2.id != link.toId ) { nodes.push(room.p2) }
+        if ( room.p3.id != link.toId ) { nodes.push(room.p3) }
+
+        if ( intersect(
+            graph.getNode(link.fromId).data,
+            graph.getNode(link.toId).data,
+            nodes[0].data,
+            nodes[1].data,
+        ) ) {
+            rooms.push(room)
+            rooms.push(
+                ...portals.getLink(nodes[0].id, nodes[1].id)
+                .data.rooms.filter(item => item != room)
+            )
+        }
+    }
+
+    for (let room of rooms) {
+        room.clear()
+    }
+
+    console.log(rooms)
+}
+
 graph.on("changed", (events) => {
+    (() => {
     for (let event of events) {
         if (event.changeType == "add") {
             if ("node" in event) {
+                portals.addNode(event.node.id, event.node.data)
+
                 if (rooms.length == 0) {
                     if (graph.getNodesCount() >= 3) {
                         let nodes = []
@@ -161,7 +280,7 @@ graph.on("changed", (events) => {
                     let from = graph.getNode(link.fromId).data
                     let to   = graph.getNode(link.toId  ).data
 
-                    dist = distToLine(
+                    let dist = distToLine(
                         from.x, from.y,
                         to.x, to.y,
                         event.node.data.x, event.node.data.y
@@ -181,16 +300,29 @@ graph.on("changed", (events) => {
                     )
                 )
             }
+
+            if ("link" in event) {
+                for (let roomA of graph.getNode(event.link.fromId).data.rooms) {
+                    for (let roomB of graph.getNode(event.link.toId).data.rooms) {
+                        if (roomA == roomB) {
+                            return
+                        }
+                    }
+                }
+
+                roomMerge(event.link)
+            }
         }
     }
+    })()
 })
 
 // add content
 
 let uid = 0
-function addNode(x, y) {
-    let data = {x: x, y: y}
-    let sym = uid
+function addNode(x, y, id) {
+    let data = {x: x, y: y, rooms: []}
+    let sym = id || uid
     uid++
 
     graph.addNode(sym, data)
@@ -198,21 +330,21 @@ function addNode(x, y) {
     return sym
 }
 
-let topright    = addNode(0, 0)
-let topleft     = addNode(innerWidth,0)
-let bottomright = addNode(0, innerHeight)
-let bottomleft  = addNode(innerWidth, innerHeight)
+let topright    = addNode(innerWidth, 0, "tr")
+let topleft     = addNode(0,0,"tl")
+let bottomright = addNode(innerWidth, innerHeight,"br")
+let bottomleft  = addNode(0, innerHeight,"bl")
 
 graph.addLink(topright, topleft, {})
 graph.addLink(topright, bottomright, {})
 graph.addLink(bottomleft, bottomright, {})
 graph.addLink(bottomleft, topleft, {})
 
-let t1 = addNode(100,100)
-let t2 = addNode(200,100)
-let t3 = addNode(100,200)
+let t1 = addNode(100,100,"t1")
+let t2 = addNode(200,100,"t2")
+let t3 = addNode(100,200,"t3")
 
 graph.addLink(t1, t2, {})
 graph.addLink(t1, t3, {})
 
-graph.addLink(t1, bottomleft, {})
+// graph.addLink(t1, bottomleft, {})
