@@ -105,7 +105,7 @@ module.exports = function(graph, options) {
     }
 
     function removeNode(node) {
-        link.data.node.clear()
+        node.data[symbol].clear()
         stage.removeChild( node.data[symbol] )
     }
 
@@ -115,7 +115,6 @@ module.exports = function(graph, options) {
     }
 
     graph.on("changed", (events) => {
-        console.log(events)
         for (let event of events) {
             if (event.changeType == "add") {
                 if ("node" in event && options.renderNodes) {
