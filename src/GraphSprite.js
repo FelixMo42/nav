@@ -3,6 +3,7 @@ const PIXI = require("pixi.js")
 
 module.exports = function(graph, options) {
     let stage = new PIXI.Container()
+    let symbol = Symbol()
 
     options = _.defaults(options, {
         renderNodes: true,
@@ -10,11 +11,14 @@ module.exports = function(graph, options) {
 
         nodeRadius: 10,
         nodeColor: 0x00ff00,
-        nodeDragable: false,
+        nodeDraggable: false,
 
         linkWidth: 6,
         linkColor: 0x00ff00
     })
+
+    stage.interactive = options.nodeDraggable
+    stage.buttonMode  = options.nodeDraggable
 
     function initNode(node) {
         let sprite = new PIXI.Graphics()
@@ -26,7 +30,7 @@ module.exports = function(graph, options) {
         sprite.drawCircle(0, 0, options.nodeRadius)
         sprite.endFill()
 
-        if ( options.nodeDragable ) {
+        if ( options.nodeDraggable ) {
             sprite.hitArea = new PIXI.Circle(0, 0, options.nodeRadius)
             sprite.buttonMode = true
             sprite.interactive = true
@@ -52,64 +56,66 @@ module.exports = function(graph, options) {
                 node.data.x = sprite.x
                 node.data.y = sprite.y
 
-                graph.fire("changed", {
+                graph.fire("changed", [{
                     changeType: "move",
                     node: node
-                })
+                }])
             })
         }
 
         stage.addChild(sprite)
-        node.data.sprite = sprite
-    }
-
-    function updateNode(node) {
-        node.data.sprite.x = node.data.x
-        node.data.sprite.y = node.data.y
+        node.data[symbol] = sprite
     }
 
     function initLink(link) {
         let from = graph.getNode(link.fromId).data
         let to   = graph.getNode(link.toId  ).data
-        
+
         let sprite = new PIXI.Graphics()
 
         sprite.lineStyle(
             options.linkWidth,
             options.linkColor
         )
+
         sprite.moveTo( from.x , from.y )
         sprite.lineTo( to.x   , to.y   )
 
         stage.addChild(sprite)
+        link.data[symbol] = sprite
+    }
 
-        link.data.sprite = sprite
+    function updateNode(node) {
+        node.data[symbol].x = node.data.x
+        node.data[symbol].y = node.data.y
     }
 
     function updateLink(link) {
         let from = graph.getNode(link.fromId).data
         let to   = graph.getNode(link.toId  ).data
 
-        link.data.sprite.clear()
+        link.data[symbol].clear()
 
-        sprite.lineStyle(
+        link.data[symbol].lineStyle(
             options.linkWidth,
             options.linkColor
         )
-        sprite.moveTo( from.x , from.y )
-        sprite.lineTo( to.x   , to.y   )
+        link.data[symbol].moveTo( from.x , from.y )
+        link.data[symbol].lineTo( to.x   , to.y   )
     }
 
     function removeNode(node) {
-        stage.removeChild( node.data.sprite )
+        link.data.node.clear()
+        stage.removeChild( node.data[symbol] )
     }
 
     function removeLink(link) {
-        link.data.sprite.clear()
-        stage.removeChild( link.data.sprite )
+        link.data[symbol].clear()
+        stage.removeChild( link.data[symbol] )
     }
 
     graph.on("changed", (events) => {
+        console.log(events)
         for (let event of events) {
             if (event.changeType == "add") {
                 if ("node" in event && options.renderNodes) {

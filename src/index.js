@@ -17,7 +17,7 @@ document.body.appendChild(app.view)
 let graph = Graph()
 
 let graphSprite = GraphSprite(graph, {
-    nodeDraggable: false
+    nodeDraggable: true
 })
 app.stage.addChild(graphSprite)
 
@@ -142,8 +142,20 @@ class Room {
         link.data.rooms = link.data.rooms.filter( item => item != this )
 
         if (link.data.rooms.length == 0) {
-            graph.removeLink(link)
+            portals.removeLink(link)
         }
+    }
+
+    update() {
+        this.sprite.clear()
+
+        this.sprite.beginFill(0x000099)
+        this.sprite.drawCircle(...center(
+            this.p1.data.x , this.p1.data.y,
+            this.p2.data.x , this.p2.data.y,
+            this.p3.data.x , this.p3.data.y
+        ), 6)
+        this.sprite.endFill()
     }
 
     clear() {
@@ -198,11 +210,10 @@ class Room {
     }
 }
 
-let portals = Graph({
-    multigraph: false
-})
+let portals = Graph()
 let portalsSprite = GraphSprite(portals, {
     renderNodes: false,
+    nodeColor: 0x0000ff,
     linkColor: 0x0000ff,
     linkWidth: 4
 })
@@ -237,7 +248,6 @@ function roomMerge(link) {
     let right = []
 
     for (let room of merge) {
-        console.log(room)
         for (let p of [room.p1, room.p2, room.p3]) {
             if (p.id !== link.toId || p.id !== link.fromId) {
                 let x0 = graph.getNode(link.toId).data.x
@@ -271,25 +281,20 @@ function roomMerge(link) {
 }
 
 function polygoneToRoom(points) {
-    console.log("========>")
-    console.log(points)
     let pos = []
     for (let node of points) {
         pos.push(node.data.x)
         pos.push(node.data.y)
     }
-    console.log(pos)
+
     let tris = earcut(pos)
     for (let i = 0; i < tris.length; i += 3) {
         rooms.push( new Room(
-            // console.log(
             points[ tris[i + 0] ],
             points[ tris[i + 1] ],
             points[ tris[i + 2] ]
-            // )
         ) )
     }
-    console.log("<========")
 }
 
 graph.on("changed", (events) => {
@@ -341,13 +346,11 @@ graph.on("changed", (events) => {
                     }
                 })
 
-                rooms.push(
-                    new Room(
-                        event.node,
-                        graph.getNode(closest.fromId),
-                        graph.getNode(closest.toId  )
-                    )
-                )
+                rooms.push( new Room(
+                    event.node,
+                    graph.getNode(closest.fromId),
+                    graph.getNode(closest.toId  )
+                ) )
             }
 
             if ("link" in event) {
@@ -355,10 +358,15 @@ graph.on("changed", (events) => {
                     return
                 }
 
-                console.log(event.link)
-
                 roomMerge(event.link)
             }
+        }
+
+        if (event.changeType == "move") {
+            for (let room of event.node.data.rooms) {
+                room.update()
+            }
+            portals.fire("changed", [event])
         }
     }
 })
@@ -392,5 +400,3 @@ let t3 = addNode(100, 200, "t3")
 
 graph.addLink(t1, t2, {})
 graph.addLink(t1, t3, {})
-
-// graph.addLink(t1, bottomleft, {})
