@@ -12,6 +12,7 @@
   "license": "ISC",
   "dependencies": {
     "browserify": "^16.5.0",
+    "earcut": "^2.2.1",
     "gulp": "^4.0.2",
     "lodash": "^4.17.15",
     "ngraph.graph": "^18.0.3",

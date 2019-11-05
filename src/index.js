@@ -5,6 +5,8 @@ const Path        = require('ngraph.path')
 const Graph       = require('./ngraph.graph')
 const GraphSprite = require('./GraphSprite')
 const Vector      = require('./struc/Vector')
+const earcut      = require('earcut')
+const _           = require('lodash')
 
 const app = new PIXI.Application({
     width: window.innerWidth,
@@ -133,9 +135,6 @@ class Room {
         } else {
             portals.addLink(a.id, b.id, {rooms: [this]})
         }
-
-        // console.log( a.id, b.id )
-        // console.log( portals.getLink(a.id, b.id).data.rooms )
     }
 
     clearLink(a, b) {
@@ -143,9 +142,7 @@ class Room {
         link.data.rooms = link.data.rooms.filter( item => item != this )
 
         if (link.data.rooms.length == 0) {
-            console.log(link)
-            console.log( graph.removeLink(link) )
-            console.log("123")
+            graph.removeLink(link)
         }
     }
 
@@ -212,7 +209,7 @@ let portalsSprite = GraphSprite(portals, {
 app.stage.addChild(portalsSprite)
 
 function roomMerge(link) {
-    let rooms = []
+    let merge = []
     
     for (let room of graph.getNode(link.toId).data.rooms) {
         let nodes = []
@@ -227,23 +224,75 @@ function roomMerge(link) {
             nodes[0].data,
             nodes[1].data,
         ) ) {
-            rooms.push(room)
-            rooms.push(
+            merge.push(room)
+            merge.push(
                 ...portals.getLink(nodes[0].id, nodes[1].id)
                 .data.rooms.filter(item => item != room)
             )
         }
     }
 
-    for (let room of rooms) {
+    let left = []
+
+    let right = []
+
+    for (let room of merge) {
+        console.log(room)
+        for (let p of [room.p1, room.p2, room.p3]) {
+            if (p.id !== link.toId || p.id !== link.fromId) {
+                let x0 = graph.getNode(link.toId).data.x
+                let y0 = graph.getNode(link.toId).data.y
+                let x1 = graph.getNode(link.fromId).data.x
+                let y1 = graph.getNode(link.fromId).data.y
+                let x2 = p.data.x
+                let y2 = p.data.y
+                let dir = (x1 - x0) * (y2 - y0) - (x2 - x0) * (y1 - y0)
+
+                if (dir > 0) {
+                    right.push(p)
+                } else if (dir < 0) {
+                    left.push(p)
+                } else {
+                    right.push(p)
+                    left.push(p)
+                }
+            }
+        }
+
         room.clear()
+        _.remove(rooms, item => item == room)
     }
 
-    console.log(rooms)
+    left  = _.uniq( left  )
+    right = _.uniq( right )
+
+    polygoneToRoom(left)
+    polygoneToRoom(right)
+}
+
+function polygoneToRoom(points) {
+    console.log("========>")
+    console.log(points)
+    let pos = []
+    for (let node of points) {
+        pos.push(node.data.x)
+        pos.push(node.data.y)
+    }
+    console.log(pos)
+    let tris = earcut(pos)
+    for (let i = 0; i < tris.length; i += 3) {
+        rooms.push( new Room(
+            // console.log(
+            points[ tris[i + 0] ],
+            points[ tris[i + 1] ],
+            points[ tris[i + 2] ]
+            // )
+        ) )
+    }
+    console.log("<========")
 }
 
 graph.on("changed", (events) => {
-    (() => {
     for (let event of events) {
         if (event.changeType == "add") {
             if ("node" in event) {
@@ -302,19 +351,16 @@ graph.on("changed", (events) => {
             }
 
             if ("link" in event) {
-                for (let roomA of graph.getNode(event.link.fromId).data.rooms) {
-                    for (let roomB of graph.getNode(event.link.toId).data.rooms) {
-                        if (roomA == roomB) {
-                            return
-                        }
-                    }
+                if ( portals.hasLink(event.link.fromId, event.link.toId) ) {
+                    return
                 }
+
+                console.log(event.link)
 
                 roomMerge(event.link)
             }
         }
     }
-    })()
 })
 
 // add content
@@ -335,14 +381,14 @@ let topleft     = addNode(0,0,"tl")
 let bottomright = addNode(innerWidth, innerHeight,"br")
 let bottomleft  = addNode(0, innerHeight,"bl")
 
-graph.addLink(topright, topleft, {})
-graph.addLink(topright, bottomright, {})
-graph.addLink(bottomleft, bottomright, {})
-graph.addLink(bottomleft, topleft, {})
+graph.addLink(topright   , topleft     , {})
+graph.addLink(topright   , bottomright , {})
+graph.addLink(bottomleft , bottomright , {})
+graph.addLink(bottomleft , topleft     , {})
 
-let t1 = addNode(100,100,"t1")
-let t2 = addNode(200,100,"t2")
-let t3 = addNode(100,200,"t3")
+let t1 = addNode(100, 100, "t1")
+let t2 = addNode(200, 100, "t2")
+let t3 = addNode(100, 200, "t3")
 
 graph.addLink(t1, t2, {})
 graph.addLink(t1, t3, {})

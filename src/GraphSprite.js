@@ -105,6 +105,7 @@ module.exports = function(graph, options) {
     }
 
     function removeLink(link) {
+        link.data.sprite.clear()
         stage.removeChild( link.data.sprite )
     }
 
