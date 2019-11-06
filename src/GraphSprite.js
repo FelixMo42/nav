@@ -132,7 +132,6 @@ module.exports = function(graph, options) {
                     removeNode(event.node)
                 }
                 if ("link" in event && options.renderLinks) {
-                    console.log(event)
                     removeLink(event.link)
                 }
             }

@@ -367,6 +367,8 @@ module.exports = class NavMesh {
     
         left  = _.uniq( left  )
         right = _.uniq( right )
+
+        console.log(merge)
     
         this.polygoneToRoom(left)
         this.polygoneToRoom(right)
