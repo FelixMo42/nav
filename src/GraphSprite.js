@@ -110,8 +110,10 @@ module.exports = function(graph, options) {
     }
 
     function removeLink(link) {
-        link.data[symbol].clear()
-        stage.removeChild( link.data[symbol] )
+        if (symbol in link.data) { // TODO: this is temperary
+            link.data[symbol].clear()
+            stage.removeChild( link.data[symbol] )
+        }
     }
 
     graph.on("changed", (events) => {
@@ -130,6 +132,7 @@ module.exports = function(graph, options) {
                     removeNode(event.node)
                 }
                 if ("link" in event && options.renderLinks) {
+                    console.log(event)
                     removeLink(event.link)
                 }
             }

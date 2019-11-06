@@ -31,7 +31,7 @@ app.stage.addChild(navMeshPortalsSprite)
 
 let navMeshRoomsSprite = GraphSprite(navMesh.rooms, {
     nodeColor: 0x000088,
-    // linkWidth: 4
+    linkColor: 0x000088
 })
 app.stage.addChild(navMeshRoomsSprite)
 

@@ -82,15 +82,17 @@ class Room {
         this.p2 = p2
         this.p3 = p3
 
-        this.setUpLink(p1, p2)
-        this.setUpLink(p3, p2)
-        this.setUpLink(p3, p1)
-        
         p1.data.rooms.push( this )
         p2.data.rooms.push( this )
         p3.data.rooms.push( this )
 
         this.calculatePosition()
+    }
+    
+    setup() {
+        this.setUpLink(this.p1, this.p2)
+        this.setUpLink(this.p3, this.p2)
+        this.setUpLink(this.p3, this.p1)
     }
 
     setUpLink(a, b) {
@@ -100,12 +102,27 @@ class Room {
             link.data.rooms.push(this)
         } else {
             this.portals.addLink(a.id, b.id, {rooms: [this]})
+            link = this.portals.getLink(a.id, b.id)
+        }
+
+        if (link.data.rooms.length == 2) {
+            if ( !this.navMesh.graph.hasLink(a.id, b.id) ) {
+                this.navMesh.rooms.addLink(
+                    link.data.rooms[0].id,
+                    link.data.rooms[1].id,
+                    {}
+                )
+            }
         }
     }
 
     clearLink(a, b) {
         let link = this.portals.getLink(a.id, b.id)
         link.data.rooms = link.data.rooms.filter( item => item != this )
+
+        this.navMesh.rooms.forEachLinkedNode(this.id, (link) => {
+            this.portals.removeLink(link)
+        })
 
         if (link.data.rooms.length == 0) {
             this.portals.removeLink(link)
@@ -198,15 +215,21 @@ module.exports = class NavMesh {
     createRoom(p1, p2, p3) {
         let id = this.id()
     
-        this.rooms.addNode( id, new Room(p1, p2, p3, id, this) )
+        let room = new Room(p1, p2, p3, id, this)
+
+        this.rooms.addNode( id, room )
+
+        room.setup()
     }
 
     onParentGraphChange(events) {
         for (let event of events) {
             if (event.changeType == "add") {
                 if ("node" in event) {
+                    let node = event.node
+
                     // add the node to the portals graph
-                    this.portals.addNode(event.node.id, event.node.data)
+                    this.portals.addNode(node.id, node.data)
     
                     // add inital room if their isnt any yet
                     if (this.rooms.getNodesCount() == 0) {
@@ -218,20 +241,21 @@ module.exports = class NavMesh {
                             })
                             this.createRoom(...nodes)
                         }
-                        return
+
+                        continue
                     }
     
     
                     // split room if node is inside of a room
-                    let room = this.getRoomContaining(event.node)
+                    let room = this.getRoomContaining(node)
                     if ( room ) {
                         room.delete()
 
-                        this.createRoom(event.node, room.p1, room.p2)
-                        this.createRoom(event.node, room.p1, room.p3)
-                        this.createRoom(event.node, room.p2, room.p3)
+                        this.createRoom(node, room.p1, room.p2)
+                        this.createRoom(node, room.p1, room.p3)
+                        this.createRoom(node, room.p2, room.p3)
 
-                        return
+                        continue
                     }
     
                     // add new room on outside outherwise
@@ -244,7 +268,7 @@ module.exports = class NavMesh {
                         let dist = distToLine(
                             from.x, from.y,
                             to.x, to.y,
-                            event.node.data.x, event.node.data.y
+                            node.data.x, node.data.y
                         )
     
                         if (!closest || dist < minDist) {
@@ -254,18 +278,28 @@ module.exports = class NavMesh {
                     })
     
                     this.createRoom(
-                        event.node,
+                        node,
                         this.graph.getNode( closest.fromId ),
                         this.graph.getNode( closest.toId   )
                     )
                 }
     
                 if ("link" in event) {
-                    if ( this.portals.hasLink(event.link.fromId, event.link.toId) ) {
-                        return
+                    let link = this.portals.getLink(
+                        event.link.fromId,
+                        event.link.toId
+                    )
+
+                    if ( link ) {
+                        if ( link.data.rooms.length == 2 ) {
+                            this.rooms.removeLink( this.rooms.getLink(
+                                link.data.rooms[0].id,
+                                link.data.rooms[1].id
+                            ) )
+                        }
+                    } else {
+                        this.addSplitLink(event.link)
                     }
-    
-                    this.addSplitLink(event.link)
                 }
             }
     
