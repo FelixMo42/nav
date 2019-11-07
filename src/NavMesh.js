@@ -82,6 +82,8 @@ class Room {
         this.p2 = p2
         this.p3 = p3
 
+        this.points = [p1, p2, p3]
+
         p1.data.rooms.push( this )
         p2.data.rooms.push( this )
         p3.data.rooms.push( this )
@@ -90,6 +92,8 @@ class Room {
     }
     
     setup() {
+        this.links = []
+
         this.setUpLink(this.p1, this.p2)
         this.setUpLink(this.p3, this.p2)
         this.setUpLink(this.p3, this.p1)
@@ -104,6 +108,8 @@ class Room {
             this.portals.addLink(a.id, b.id, {rooms: [this]})
             link = this.portals.getLink(a.id, b.id)
         }
+
+        this.links.push(link)
 
         if (link.data.rooms.length == 2) {
             if ( !this.navMesh.graph.hasLink(a.id, b.id) ) {
@@ -314,30 +320,62 @@ module.exports = class NavMesh {
 
     addSplitLink(link) {
         let merge = []
+
+        let from = this.graph.getNode( link.fromId ).data
+        let to = this.graph.getNode( link.toId   ).data
         
-        for (let room of this.graph.getNode(link.toId).data.rooms) {
+        for (let room of this.graph.getNode(link.fromId).data.rooms) {
             let nodes = []
     
-            if ( room.p1.id != link.toId ) { nodes.push(room.p1) }
-            if ( room.p2.id != link.toId ) { nodes.push(room.p2) }
-            if ( room.p3.id != link.toId ) { nodes.push(room.p3) }
+            if ( room.p1.id != link.fromId ) { nodes.push(room.p1) }
+            if ( room.p2.id != link.fromId ) { nodes.push(room.p2) }
+            if ( room.p3.id != link.fromId ) { nodes.push(room.p3) }
     
-            if ( intersect(
-                this.graph.getNode( link.fromId ).data,
-                this.graph.getNode( link.toId   ).data,
-                nodes[0].data,
-                nodes[1].data,
-            ) ) {
+            if ( intersect(from, to, nodes[0].data, nodes[1].data) ) {
                 merge.push(room)
-                merge.push(
-                    ...this.portals.getLink(nodes[0].id, nodes[1].id)
-                    .data.rooms.filter(item => item != room)
-                )
+
+                let portal = this.portals.getLink(nodes[0].id, nodes[1].id)
+
+                while (true) {                   
+                    if ( portal.data.rooms.length == 1 ) {
+                        break
+                    }
+
+                    let room = portal.data.rooms[0] != _.last(merge) ?
+                        portal.data.rooms[0] : 
+                        portal.data.rooms[1]
+
+                    merge.push(room)
+
+                    if ( room.points.some( point => point.id == link.toId ) ) {
+                        break
+                    }
+
+                    for (let link in room.points.links) {
+                        if (link == portal) {
+                            continue
+                        }
+
+                        
+
+                        if ( intersect(
+                            from, to,
+                            this.graph.getNode(link.fromId),
+                            this.graph.getNode(link.toId)
+                        ) ) {
+                            portal = link
+
+                            break
+                        }
+                        
+                    }
+                }
+
+                break
             }
         }
     
-        let left = []
-    
+        let left  = []
         let right = []
     
         for (let room of merge) {
