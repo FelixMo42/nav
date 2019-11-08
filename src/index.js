@@ -35,7 +35,7 @@ let navMeshRoomsSprite = GraphSprite(navMesh.rooms, {
 
 app.stage.addChild(graphSprite)
 app.stage.addChild(navMeshPortalsSprite)
-// app.stage.addChild(navMeshRoomsSprite)
+app.stage.addChild(navMeshRoomsSprite)
 
 // add content
 
@@ -89,6 +89,6 @@ let n2 = addNode(800, 600, "n2")
 let n3 = addNode(600, 800, "n3")
 
 graph.addLink(n1, n2, {})
-// graph.addLink(n1, n3, {})
+graph.addLink(n1, n3, {})
 
 // add targets

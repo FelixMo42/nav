@@ -336,6 +336,8 @@ module.exports = class NavMesh {
 
                 let portal = this.portals.getLink(nodes[0].id, nodes[1].id)
 
+                let i = 0
+
                 while (true) {                   
                     if ( portal.data.rooms.length == 1 ) {
                         break
@@ -351,23 +353,20 @@ module.exports = class NavMesh {
                         break
                     }
 
-                    for (let link in room.points.links) {
+                    for (let link of room.links) {
                         if (link == portal) {
                             continue
                         }
 
-                        
-
                         if ( intersect(
                             from, to,
-                            this.graph.getNode(link.fromId),
-                            this.graph.getNode(link.toId)
+                            this.graph.getNode(link.fromId).data,
+                            this.graph.getNode(link.toId).data
                         ) ) {
                             portal = link
 
                             break
                         }
-                        
                     }
                 }
 
@@ -405,8 +404,6 @@ module.exports = class NavMesh {
     
         left  = _.uniq( left  )
         right = _.uniq( right )
-
-        console.log(merge)
     
         this.polygoneToRoom(left)
         this.polygoneToRoom(right)
