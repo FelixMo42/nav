@@ -5,7 +5,7 @@ const fs = require("fs")
 gulp.task('bundle', async () =>
     browserify({entries: './src/index.js', debug: true})
         .bundle()
-        .pipe(fs.createWriteStream("./build/bundle.js"))
+        .pipe(fs.createWriteStream("./build/js/bundle.js"))
 )
 
 gulp.task('bundle:watch', async () =>
