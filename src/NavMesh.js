@@ -1,4 +1,4 @@
-const Graph  = require('./ngraph.graph')
+const Graph  = require('ngraph.graph')
 const earcut = require("earcut")
 const Vector = require('./struc/Vector')
 const _      = require('lodash')
@@ -128,7 +128,7 @@ class Room {
 
         this.navMesh.rooms.forEachLinkedNode(this.id, (link) => {
             this.portals.removeLink(link)
-        })
+        }, true)
 
         if (link.data.rooms.length == 0) {
             this.portals.removeLink(link)
@@ -192,8 +192,8 @@ module.exports = class NavMesh {
     constructor(graph, options) {
         this.graph   = graph
 
-        this.rooms   = Graph({})
-        this.portals = Graph({})
+        this.rooms   = Graph({oriented: false})
+        this.portals = Graph({oriented: false})
 
         this.iid = 0
 

@@ -2,7 +2,7 @@
 
 const PIXI        = require("pixi.js")
 const Path        = require('ngraph.path')
-const Graph       = require('./ngraph.graph')
+const Graph       = require('ngraph.graph')
 const GraphSprite = require('./GraphSprite')
 const NavMesh     = require('./NavMesh')
 const _           = require('lodash')
@@ -14,7 +14,7 @@ const app = new PIXI.Application({
 })
 document.body.appendChild(app.view)
 
-let graph = Graph()
+let graph = Graph({oriented: false})
 
 let graphSprite = GraphSprite(graph, {
     nodeDraggable: true
@@ -39,11 +39,9 @@ app.stage.addChild(navMeshRoomsSprite)
 
 // add content
 
-let uid = 0
 function addNode(x, y, id) {
     let data = {x: x, y: y, rooms: []}
-    let sym = id || uid
-    uid++
+    let sym = id || data
 
     graph.addNode(sym, data)
 
