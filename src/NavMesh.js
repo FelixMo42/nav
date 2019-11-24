@@ -166,6 +166,7 @@ class Room {
 
 module.exports = class NavMesh {
     constructor(options) {
+        this.funcs   = []
         this.options = options
         
         this.rooms   = new Graph({trackNodes: true})
@@ -179,7 +180,9 @@ module.exports = class NavMesh {
             if (this.portals.getTotalNodes() == 3) {
                 this.createRoom(...this.portals.allNodes())
             }
-            return
+
+            this.callback([{"type": "add", "node": node}])
+            return node
         }
 
         let room = this.getRoomContaining(node)
@@ -191,7 +194,8 @@ module.exports = class NavMesh {
             this.createRoom(node, room.p1, room.p3)
             this.createRoom(node, room.p2, room.p3)
 
-            return
+            this.callback([{"type": "add", "node": node}])
+            return node
         }
 
         let closest = false
@@ -214,6 +218,7 @@ module.exports = class NavMesh {
 
         this.createRoom(node, ...closest.nodes)
 
+        this.callback([{"type": "add", "node": node}])
         return node
     }
 
@@ -322,17 +327,17 @@ module.exports = class NavMesh {
     addSplitEdge(edge) {
         let merge = []
 
-        let from = this.graph.getNode( edge.fromId ).data
-        let to = this.graph.getNode( edge.toId   ).data
+        let from = edge.nodes[0]
+        let to   = edge.nodes[1]
         
-        for (let room of this.graph.getNode(edge.fromId).data.rooms) {
+        for (let room of from.data.rooms) {
             let nodes = []
     
             if ( room.p1.id != edge.fromId ) { nodes.push(room.p1) }
             if ( room.p2.id != edge.fromId ) { nodes.push(room.p2) }
             if ( room.p3.id != edge.fromId ) { nodes.push(room.p3) }
     
-            if ( intersect(from, to, nodes[0].data, nodes[1].data) ) {
+            if ( intersect(from.data, to.data, nodes[0].data, nodes[1].data) ) {
                 merge.push(room)
 
                 let portal = this.portals.getEdge(nodes[0].id, nodes[1].id)
@@ -430,5 +435,15 @@ module.exports = class NavMesh {
     optimize(room1, room2) {
         let portal = this.rooms.getEdge(room1.id, room2.id)
         
+    }
+
+    callback(event) {
+        for (let func of this.funcs) {
+            func(event)
+        }
+    }
+
+    on(event, func) {
+        this.funcs.push(func)
     }
 }
