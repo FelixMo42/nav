@@ -2,6 +2,7 @@ const Graph  = require('struk.graph')
 const earcut = require("earcut")
 const Vector = require('./struc/Vector')
 const _      = require('lodash')
+const Event  = require("./EventMonger")
 
 function area(x1, y1, x2, y2, x3, y3) {
     return Math.abs((x1 * (y2 - y3) + x2 * (y3 - y1) + x3 * (y1 - y2)) / 2.0) 
@@ -171,54 +172,56 @@ module.exports = class NavMesh {
         
         this.rooms   = new Graph({trackNodes: true})
         this.portals = new Graph({trackNodes: true, trackEdges: true})
+
+        this.addNodeEvent = Event.newEvent()
+        this.addEdgeEvent = Event.newEvent()
     }
 
     addNode(x, y) {
+
+        // cases:
+        // * there are no rooms
+        // * were outside of the rooms
+        // * were inside a room
+
         let node = this.portals.addNode({x: x, y: y, rooms: []})
+        let room = this.getRoomContaining(node)
 
         if (this.rooms.getTotalNodes() == 0) {
             if (this.portals.getTotalNodes() == 3) {
                 this.createRoom(...this.portals.allNodes())
             }
-
-            this.callback([{"type": "add", "node": node}])
-            return node
-        }
-
-        let room = this.getRoomContaining(node)
-
-        if ( room ) {
+        } else if ( room ) {
             room.delete()
 
             this.createRoom(node, room.p1, room.p2)
             this.createRoom(node, room.p1, room.p3)
             this.createRoom(node, room.p2, room.p3)
 
-            this.callback([{"type": "add", "node": node}])
             return node
-        }
+        } else {
+            let closest = false
+            let minDist = 0
+            
+            for (let portal of this.portals.allEdges()) {
+                let from = portal.nodes[0].data
+                let to   = portal.nodes[1].data
 
-        let closest = false
-        let minDist = 0
-        for (let portal of this.portals.allEdges()) {
-            let from = portal.nodes[0].data
-            let to   = portal.nodes[1].data
+                let dist = distToLine(
+                    from.x, from.y,
+                    to.x, to.y,
+                    node.data.x, node.data.y
+                )
 
-            let dist = distToLine(
-                from.x, from.y,
-                to.x, to.y,
-                node.data.x, node.data.y
-            )
-
-            if (!closest || dist < minDist) {
-                closest = portal
-                minDist = dist
+                if (!closest || dist < minDist) {
+                    closest = portal
+                    minDist = dist
+                }
             }
+
+            this.createRoom(node, ...closest.nodes)
         }
 
-        this.createRoom(node, ...closest.nodes)
-
-        this.callback([{"type": "add", "node": node}])
         return node
     }
 
@@ -435,15 +438,5 @@ module.exports = class NavMesh {
     optimize(room1, room2) {
         let portal = this.rooms.getEdge(room1.id, room2.id)
         
-    }
-
-    callback(event) {
-        for (let func of this.funcs) {
-            func(event)
-        }
-    }
-
-    on(event, func) {
-        this.funcs.push(func)
     }
 }
