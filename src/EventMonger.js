@@ -5,8 +5,8 @@ module.exports = Object.freeze({
     fire: (event, data) => {
         event.forEach(callback => callback(data))
     },
-    on: (event) => {
-        event.push(event)
+    on: (event, callback) => {
+        event.push(callback)
     },
     off: (event) => {
         //TODO: deregister callback

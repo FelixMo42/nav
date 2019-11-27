@@ -14,31 +14,21 @@ document.body.appendChild(app.view)
 
 let navMesh = new NavMesh()
 
-let portalsSprite = GraphSprite(navMesh.portals, {
-    renderNodes: false,
-    edgeColor: 0x000088,
-    edgeWidth: 4
-})
+let navSprite = GraphSprite(navMesh)
 
-let roomsSprite = GraphSprite(navMesh.rooms, {
-    nodeColor: 0x000088,
-    edgeColor: 0x000088
-})
-
-app.stage.addChild(portalsSprite)
-app.stage.addChild(roomsSprite)
+app.stage.addChild(navSprite)
 
 // add content
 
-let innerWidth = 1100
-let innerHeight = 1100
+let innerWidth = window.innerWidth
+let innerHeight = window.innerHeight
 
 let topright    = navMesh.addNode(innerWidth, 0, "tr")
 let topleft     = navMesh.addNode(0,0,"tl")
 let bottomright = navMesh.addNode(innerWidth, innerHeight,"br")
 let bottomleft  = navMesh.addNode(0, innerHeight,"bl")
 
-// graph.addEdge(topright   , topleft     , {})
+graph.addEdge(topright   , topleft     , {})
 // graph.addEdge(topright   , bottomright , {})
 // graph.addEdge(bottomleft , bottomright , {})
 // graph.addEdge(bottomleft , topleft     , {})

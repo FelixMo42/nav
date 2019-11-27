@@ -197,12 +197,10 @@ module.exports = class NavMesh {
             this.createRoom(node, room.p1, room.p2)
             this.createRoom(node, room.p1, room.p3)
             this.createRoom(node, room.p2, room.p3)
-
-            return node
         } else {
             let closest = false
             let minDist = 0
-            
+
             for (let portal of this.portals.allEdges()) {
                 let from = portal.nodes[0].data
                 let to   = portal.nodes[1].data
@@ -222,6 +220,7 @@ module.exports = class NavMesh {
             this.createRoom(node, ...closest.nodes)
         }
 
+        Event.fire(this.addNodeEvent, node)
         return node
     }
 
@@ -236,95 +235,6 @@ module.exports = class NavMesh {
     createRoom(...points) {
         let node = this.rooms.addNode()
         node.data = new Room(points, node, this)
-    }
-
-    onParentGraphChange(events) {
-        for (let event of events) {
-            if (event.changeType == "add") {
-                if ("node" in event) {
-                    let node = event.node
-
-                    // add the node to the portals graph
-                    this.portals.addNode(node.id, node.data)
-    
-                    // add inital room if their isnt any yet
-                    if (this.rooms.getNodesCount() == 0) {
-                        if (this.graph.getNodesCount() >= 3) {
-                            let nodes = []
-                            this.graph.forEachNode((node) => {
-                                nodes.push(node)
-                                return nodes.length == 3
-                            })
-                            this.createRoom(...nodes)
-                        }
-
-                        continue
-                    }
-    
-                    // split room if node is inside of a room
-                    let room = this.getRoomContaining(node)
-                    if ( room ) {
-                        room.delete()
-
-                        this.createRoom(node, room.p1, room.p2)
-                        this.createRoom(node, room.p1, room.p3)
-                        this.createRoom(node, room.p2, room.p3)
-
-                        continue
-                    }
-    
-                    // add new room on outside outherwise
-                    let closest = false
-                    let minDist = 0
-                    this.portals.forEachEdge((edge) => {
-                        let from = this.graph.getNode(edge.fromId).data
-                        let to   = this.graph.getNode(edge.toId  ).data
-    
-                        let dist = distToLine(
-                            from.x, from.y,
-                            to.x, to.y,
-                            node.data.x, node.data.y
-                        )
-    
-                        if (!closest || dist < minDist) {
-                            closest = edge
-                            minDist = dist
-                        }
-                    })
-    
-                    this.createRoom(
-                        node,
-                        this.graph.getNode( closest.fromId ),
-                        this.graph.getNode( closest.toId   )
-                    )
-                }
-    
-                if ("edge" in event) {
-                    let edge = this.portals.getEdge(
-                        event.edge.fromId,
-                        event.edge.toId
-                    )
-
-                    if ( edge ) {
-                        if ( edge.data.rooms.length == 2 ) {
-                            this.rooms.removeEdge( this.rooms.getEdge(
-                                edge.data.rooms[0].id,
-                                edge.data.rooms[1].id
-                            ) )
-                        }
-                    } else {
-                        this.addSplitEdge(event.edge)
-                    }
-                }
-            }
-    
-            if (event.changeType == "move") {
-                for (let room of event.node.data.rooms) {
-                    room.update()
-                }
-                this.portals.fire("changed", [event])
-            }
-        }
     }
 
     addSplitEdge(edge) {

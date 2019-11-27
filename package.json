@@ -4,7 +4,7 @@
   "description": "",
   "main": "src/index.js",
   "scripts": {
-    "start": "watchify . -o bundle.js",
+    "start": "watchify . -o build/js/bundle.js --debug",
     "build": "browserify index.js -o bundle.js",
     "test": "mocha"
   },

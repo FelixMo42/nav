@@ -1,7 +1,8 @@
-const _    = require("lodash")
-const PIXI = require("pixi.js")
+const _     = require("lodash")
+const PIXI  = require("pixi.js")
+const Event = require("./EventMonger")
 
-module.exports = function(graph, options) {
+module.exports = function(navMesh, options) {
     let stage = new PIXI.Container()
     let symbol = Symbol()
 
@@ -56,10 +57,10 @@ module.exports = function(graph, options) {
                 node.data.x = sprite.x
                 node.data.y = sprite.y
 
-                graph.fire("changed", [{
-                    changeType: "move",
-                    node: node
-                }])
+                // Event.fire("changed", [{
+                //     changeType: "move",
+                //     node: node
+                // }])
             })
         }
 
@@ -68,8 +69,8 @@ module.exports = function(graph, options) {
     }
 
     function initLink(link) {
-        let from = graph.getNode(link.fromId).data
-        let to   = graph.getNode(link.toId  ).data
+        let from = link.nodes[0].data
+        let to   = link.nodes[1].data
 
         let sprite = new PIXI.Graphics()
 
@@ -91,8 +92,8 @@ module.exports = function(graph, options) {
     }
 
     function updateLink(link) {
-        let from = graph.getNode(link.fromId).data
-        let to   = graph.getNode(link.toId  ).data
+        let from = link.nodes[0].data
+        let to   = link.nodes[1].data
 
         link.data[symbol].clear()
 
@@ -116,39 +117,12 @@ module.exports = function(graph, options) {
         }
     }
 
-    graph.on("changed", (events) => {
-        for (let event of events) {
-            if (event.changeType == "add") {
-                if ("node" in event && options.renderNodes) {
-                    initNode(event.node)
-                }
-                if ("link" in event && options.renderLinks) {
-                    initLink(event.link)
-                }
-            }
+    Event.on(navMesh.addNodeEvent, (node) => {
+        initNode(node)
+    })
 
-            if (event.changeType == "remove") {
-                if ("node" in event && options.renderNodes) {
-                    removeNode(event.node)
-                }
-                if ("link" in event && options.renderLinks) {
-                    removeLink(event.link)
-                }
-            }
-
-            if (event.changeType == "move") {
-                if (options.renderNodes) {
-                    updateNode(event.node)
-                }
-
-                if (options.renderLinks) {
-                    graph.forEachLinkedNode(event.node.id, (to, link) => {
-                        updateLink(link)
-                    })
-                }
-            }
-
-        }
+    Event.on(navMesh.addEdgeEvent, (link) => {
+        initLink(link)
     })
 
     return stage
