@@ -1,13 +1,16 @@
-const Graph  = require("struk.graph")
+const Graph  = require("./Graph")
 const earcut = require("earcut")
 const Event  = require("./EventMonger")
 
-function forEachCirc(array, callback) {
+let uid = 0
+
+function *forEachCirc(array) {
     let length = array.length
     for (let i = 0; i < length; i++) {
-        callback(
-            array[i], array[ (i + 1) % length ]
-        )
+        yield [
+            array[i],
+            array[ (i + 1) % length ]
+        ]
     }
 }
 
@@ -15,24 +18,12 @@ function area(p1, p2, p3) {
     return Math.abs((p1.x * (p2.y - p3.y) + p2.x * (p3.y - p1.y) + p3.x * (p1.y - p2.y)) / 2.0) 
 }
 
-function distToLine(p1, p2, p) {
-    //https://en.wikipedia.org/wiki/Distance_from_a_point_to_a_line#Vector_formulation
-
-    let n = new Vector(p1)
-        .sub( new Vector({x: p2.x, y: p2.y}) )
-        .normalize()
-    
-    let a = new Vector(p2)
-
-    return a.sub(p).sub( n.mul( a.sub(p).dot(n) ) ).mag()
-}
-
 function orientation(p1, p2, p3) {
-    let val = (p2.y - p1.y) * (p3.x - p2.x) - (p2.x - p1.x) * (p3.y - p2.y)
+    let dir = (p2.y - p1.y) * (p3.x - p2.x) - (p2.x - p1.x) * (p3.y - p2.y)
 
-    if (val == 0) return 0
+    if (dir == 0) { return 0 }
 
-    return (val > 0)? 1: 2
+    return (dir > 0) ? 1 : -1
 }
 
 function onSegment(p, q, r) {
@@ -90,8 +81,6 @@ function contains(p1, p2, p3, p) {
     
     // Calculate area of partal triangle ABP  
     let A3 = area(p1, p2, p)
-
-    console.log(A, A1 + A2 + A3)
 
     // do the area add up to the same thing?
     return A == A1 + A2 + A3
@@ -153,13 +142,119 @@ module.exports = class NavMesh {
         this.removeRoom(room)
 
         // split the room into parts and the new rooms
-        forEachCirc(room.nodes, (node1, node2) => {
+        for (let [node1, node2] of forEachCirc(room.nodes)) {
             this.addRoom([node1, node2, node])
-        })
+        }
+
+        // return the node
+        return node
     }
 
-    addEdge() {
+    addEdge(from, to) {
+        // if the edge all ready exist then were good, just return that
+        let edge = this.portals.getEdge(from, to)
+        if ( edge ) {
+            return edge
+        }
 
+        // keep track of the nodes on both side of the line and
+        // the rooms we visite
+        let left  = new Set([from, to])
+        let right = new Set([from, to])
+        let rooms = []
+
+
+        let addRoomNodes = (room) => {
+            rooms.push(room)
+
+            for (let node of room.nodes) {
+                if (orientation(from, to, node) > 0) {
+                    left.add( node )
+                } else {
+                    right.add( node )
+                }
+            }
+        }
+
+        let procRoom = (room, source) => {
+            // look throught all the edges in the room
+            for (let edge of room.edges) {
+                // we came from this edge, dont cheack it again
+                if (edge == source) { continue }
+
+                // weve reached are destination!
+                if (edge.nodes[0] == to) {
+                    addRoomNodes(room)
+                    return true
+                }
+
+                // do we cross a line
+                if ( intersect(...edge.nodes, from, to) ) {
+                    let nextRoom =
+                        edge.rooms[0] === room ?
+                            edge.rooms[1] :
+                            edge.rooms[0]
+
+                    addRoomNodes(nextRoom)
+                        
+                    return procRoom(nextRoom, edge)
+                }
+            }
+
+            // our mission was a failer, report that back
+            return false
+        }
+
+        // figure out what conected room the line goes throught or if
+        // they are in the same room. Then recusivly get all the rooms.
+        for (let room of from.rooms) {
+            for (let edge of room.edges) {
+                // The target node is in the same room as the origin
+                if (edge.nodes[0] == to) {
+                    addRoomNodes(room)
+                    break
+                }
+
+                // skip it if edge leads to origin node
+                if (edge.nodes[0] == from || edge.nodes[1] == from) {
+                    continue
+                }
+
+                // do we cross a line
+                if ( intersect(...edge.nodes, from, to) ) {
+                    let nextRoom =
+                        edge.rooms[0] === room ?
+                            edge.rooms[1] :
+                            edge.rooms[0]
+
+                    console.log( edge.toString() )
+
+                    addRoomNodes(room)    
+                    procRoom(nextRoom, edge)
+                }
+            }
+        }
+
+        // delete all the rooms we go throught
+        for (let room of rooms) {
+            this.removeRoom( room )
+        }
+
+        // Its safe, we can create the edge
+        edge = this.setUpPortal(from, to)
+
+        // turn the two sides into rooms
+        this.polygoneToRooms(left)
+        this.polygoneToRooms(right)
+
+        // return the edge
+        return edge
+    }
+
+    *perimeter(room) {
+        for (let endPoints of forEachCirc(room.nodes)) {
+            yield this.portals.getEdge(...endPoints)
+        }
     }
 
     // get it //
@@ -179,12 +274,13 @@ module.exports = class NavMesh {
     // set up //
 
     setUpNode({x, y}) {
-        let node = this.portals.addNode()
+        let node = this.portals.addNode(uid); uid++
+        node.toString = () => `(${x},${y}#${node.data})`
         node.rooms = []
         node.x = x
         node.y = y
 
-        // fire the related event
+        // fire the relevant event
         Event.fire(this.addNodeEvent, node)
 
         // return the node
@@ -192,10 +288,28 @@ module.exports = class NavMesh {
     }
 
     setUpPortal(from, to) {
-        let edge = this.portals.addEdge(from, to)
+        for (let room of this.rooms.allNodes()) {
+            for (let edge of room.edges) {
+                if (edge.nodes[0] !== from && edge.nodes[1] !== from) {
+                    continue
+                }
+                if (edge.nodes[0] !== to && edge.nodes[1] !== to) {
+                    continue
+                }
+        
+                console.log(edge.toString())
+
+                console.log( edge.nodes )
+        
+            }
+        }
+        console.log(`================================${uid}`)
+
+        let edge = this.portals.addEdge(from, to, uid); uid++
+        edge.toString = () => `[${from} -> ${to}]#${edge.data}`
         edge.rooms = []
 
-        // fire the related event
+        // fire the relevant event
         Event.fire(this.addPortEvent, edge)
 
         // return the edge
@@ -206,7 +320,8 @@ module.exports = class NavMesh {
 
     addRoom(nodes) {
         // create room node in graph
-        let room = this.rooms.addNode()
+        let room = this.rooms.addNode(uid); uid++
+        nodes.toString = () => ",".join( nodes )
         room.nodes = nodes
         room.edges = []
 
@@ -214,8 +329,8 @@ module.exports = class NavMesh {
         nodes.forEach(node => node.rooms.push(room))
 
         // get the rooms edges
-        forEachCirc(nodes, (from, to) => {
-            // get the edge if it exist
+        for (let [from, to] of forEachCirc(nodes) ) {
+            // get edge bettween endpoints
             let edge = this.portals.getEdge(from, to)
 
             // create the edge if it doesent exist
@@ -226,13 +341,13 @@ module.exports = class NavMesh {
             // update the refrences
             edge.rooms.push(room)
             room.edges.push(edge)
-        })
+        }
 
         // calculate the center of mass
-        this.x = nodes.reduce((x, node) => x + node.x) / nodes.length
-        this.y = nodes.reduce((x, node) => x + node.x) / nodes.length
+        room.x = nodes.reduce((x, node) => x + node.x, 0) / nodes.length
+        room.y = nodes.reduce((y, node) => y + node.y, 0) / nodes.length
 
-        // fire the related event
+        // fire the relevant event
         Event.fire(this.addRoomEvent, room)
 
         // return the room
@@ -249,11 +364,11 @@ module.exports = class NavMesh {
         for (let edge of room.edges) {
             edge.rooms = edge.rooms.filter( item => item != room )
 
-            // if the edge isent connected to any room remove it
+            // if the edge isnt connected to any rooms remove it
             if (edge.rooms.length == 0) {
                 this.portals.removeEdge(edge)
 
-                // fire the related event
+                // fire the relevant event
                 Event.fire(this.removePortEvent, edge)
             }
         }
@@ -261,7 +376,7 @@ module.exports = class NavMesh {
         // remove room from rooms graph
         this.rooms.removeNode(room)
 
-        // fire the related event
+        // fire the relevant event
         Event.fire(this.removeRoomEvent, room)
 
         // return the room

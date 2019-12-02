@@ -3,7 +3,7 @@
 const PIXI        = require("pixi.js")
 const GraphSprite = require("./GraphSprite")
 const NavMesh     = require("./NavMesh2")
-const Event       = require("./EventMonger")
+// const Event       = require("./EventMonger")
 // const _           = require("lodash")
 // const Vector      = require("./struc/Vector")
 
@@ -21,7 +21,7 @@ let navMesh = new NavMesh()
 let navSprite = GraphSprite(navMesh)
 app.stage.addChild(navSprite)
 
-navMesh.makeShell([
+let [tl, tr, br, bl] = navMesh.makeShell([
     {x: 0         , y: 0          },
     {x: innerWidth, y: 0          },
     {x: innerWidth, y: innerHeight},
@@ -43,5 +43,3 @@ let t3 = navMesh.addNode({x: 500, y: 300}, "t3")
 
 // navMesh.addEdge(n1, n2, {})
 // navMesh.addEdge(n1, n3, {})
-
-// add targets

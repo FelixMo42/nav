@@ -16,7 +16,7 @@
         "lodash": "^4.17.15",
         "ngraph.path": "^1.3.1",
         "pixi.js": "^5.2.0",
-        "struk.graph": "^1.3.0"
+        "struk.graph": "^2.1.0"
     },
     "devDependencies": {
         "chai": "^4.2.0",

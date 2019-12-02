@@ -28,6 +28,10 @@
         "semi": [
             "error",
             "never"
+        ],
+        "no-constant-condition": [
+            "error",
+            { "checkLoops": false }
         ]
     }
 }

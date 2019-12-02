@@ -148,5 +148,9 @@ module.exports = function(navMesh, options) {
         initRoom(room)
     })
 
+    Event.on(navMesh.removeRoomEvent, (room) => {
+        removeNode(room)
+    })
+
     return stage
 }
