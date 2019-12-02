@@ -117,13 +117,35 @@ module.exports = function(navMesh, options) {
         }
     }
 
-
     Event.on(navMesh.addNodeEvent, (node) => {
         initNode(node)
     })
 
     Event.on(navMesh.addPortEvent, (link) => {
         initLink(link)
+    })
+
+    Event.on(navMesh.removePortEvent, (link) => {
+        removeLink(link)
+    })
+
+
+    function initRoom(room) {
+        let sprite = new PIXI.Graphics()
+
+        sprite.x = room.x
+        sprite.y = room.y
+
+        sprite.beginFill(options.nodeColor)
+        sprite.drawCircle(0, 0, options.nodeRadius)
+        sprite.endFill()
+
+        stage.addChild(sprite)
+        room[symbol] = sprite
+    }
+
+    Event.on(navMesh.addRoomEvent, (room) => {
+        initRoom(room)
     })
 
     return stage
