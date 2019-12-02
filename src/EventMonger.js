@@ -1,14 +1,14 @@
 module.exports = Object.freeze({
     newEvent: () => {
-        return []
+        return new Set()
     },
     fire: (event, data) => {
         event.forEach(callback => callback(data))
     },
     on: (event, callback) => {
-        event.push(callback)
+        event.add(callback)
     },
     off: (event) => {
-        //TODO: deregister callback
+        event.delete(event)
     }
 })

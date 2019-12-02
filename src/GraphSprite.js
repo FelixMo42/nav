@@ -24,8 +24,8 @@ module.exports = function(navMesh, options) {
     function initNode(node) {
         let sprite = new PIXI.Graphics()
 
-        sprite.x = node.data.x
-        sprite.y = node.data.y
+        sprite.x = node.x
+        sprite.y = node.y
 
         sprite.beginFill( options.nodeColor )
         sprite.drawCircle(0, 0, options.nodeRadius)
@@ -36,12 +36,12 @@ module.exports = function(navMesh, options) {
             sprite.buttonMode = true
             sprite.interactive = true
 
-            sprite.on('mousedown', (event) => {
+            sprite.on("mousedown", (event) => {
                 sprite.alpha = 0.5
                 sprite.dragging = true
                 sprite.dragData = event.data
             })
-            sprite.on('mousemove', (event) => {
+            sprite.on("mousemove", () => {
                 if (sprite.dragging) {
                     var newPosition = sprite.dragData.getLocalPosition(sprite.parent)
         
@@ -49,13 +49,13 @@ module.exports = function(navMesh, options) {
                     sprite.y = newPosition.y
                 }
             })
-            sprite.on('mouseup', (event) => {
+            sprite.on("mouseup", () => {
                 sprite.alpha = 1
                 sprite.dragging = false
                 sprite.dragData = null
                 
-                node.data.x = sprite.x
-                node.data.y = sprite.y
+                node.x = sprite.x
+                node.y = sprite.y
 
                 // Event.fire("changed", [{
                 //     changeType: "move",
@@ -69,8 +69,8 @@ module.exports = function(navMesh, options) {
     }
 
     function initLink(link) {
-        let from = link.nodes[0].data
-        let to   = link.nodes[1].data
+        let from = link.nodes[0]
+        let to   = link.nodes[1]
 
         let sprite = new PIXI.Graphics()
 
@@ -87,13 +87,13 @@ module.exports = function(navMesh, options) {
     }
 
     function updateNode(node) {
-        node.data[symbol].x = node.data.x
-        node.data[symbol].y = node.data.y
+        node.data[symbol].x = node.x
+        node.data[symbol].y = node.y
     }
 
     function updateLink(link) {
-        let from = link.nodes[0].data
-        let to   = link.nodes[1].data
+        let from = link.nodes[0]
+        let to   = link.nodes[1]
 
         link.data[symbol].clear()
 
@@ -122,6 +122,7 @@ module.exports = function(navMesh, options) {
     })
 
     Event.on(navMesh.addEdgeEvent, (link) => {
+        console.log("hi")
         initLink(link)
     })
 

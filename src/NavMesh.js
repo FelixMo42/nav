@@ -1,22 +1,21 @@
-const Graph  = require('struk.graph')
+const Graph  = require("struk.graph")
 const earcut = require("earcut")
-const Vector = require('./struc/Vector')
-const _      = require('lodash')
+const Vector = require("./struc/Vector")
+const _      = require("lodash")
 const Event  = require("./EventMonger")
 
-function area(x1, y1, x2, y2, x3, y3) {
-    return Math.abs((x1 * (y2 - y3) + x2 * (y3 - y1) + x3 * (y1 - y2)) / 2.0) 
+function area(p1, p2, p3) {
+    return Math.abs((p1.x * (p2.y - p3.y) + p2.x * (p3.y - p1.y) + p3.x * (p1.y - p2.y)) / 2.0) 
 }
 
-function distToLine(x1, y1, x2, y2, x, y) {
+function distToLine(p1, p2, p) {
     //https://en.wikipedia.org/wiki/Distance_from_a_point_to_a_line#Vector_formulation
 
-    let n = new Vector({x: x1, y: y1})
-                .sub( new Vector({x: x2, y: y2}) )
-                .normalize()
+    let n = new Vector(p1)
+        .sub( new Vector({x: p2.x, y: p2.y}) )
+        .normalize()
     
-    let a = new Vector({x: x2, y: y2})
-    let p = new Vector({x: x, y: y})
+    let a = new Vector(p2)
 
     return a.sub(p).sub( n.mul( a.sub(p).dot(n) ) ).mag()
 }
@@ -79,7 +78,7 @@ class Room {
 
         this.points = points
         this.points.forEach(point => {
-            point.data.rooms.push( this )
+            point.rooms.push( this )
         })
 
         this.calculatePosition()
@@ -124,7 +123,7 @@ class Room {
 
     clear() {
         for (let point in this.points) {
-            point.data.rooms = point.data.rooms.filter( item => item != this )
+            point.rooms = point.rooms.filter( item => item != this )
         }
 
         for (let edge in this.edges) {
@@ -138,24 +137,21 @@ class Room {
         this.navMesh.rooms.removeNode(this.node)
     }
 
-    contains(x, y) {
-        let x1 = this.points[0].data.x
-        let y1 = this.points[0].data.y
-        let x2 = this.points[1].data.x
-        let y2 = this.points[1].data.y
-        let x3 = this.points[2].data.x
-        let y3 = this.points[2].data.y
+    contains(p) {
+        let p1 = this.points[0]
+        let p2 = this.points[1]
+        let p3 = this.points[2]
 
-        let A = area(x1, y1, x2, y2, x3, y3) 
+        let A = area(p1, p2, p3) 
   
         // # Calculate area of triangle PBC  
-        let A1 = area(x, y, x2, y2, x3, y3) 
+        let A1 = area(p, p2, p3) 
         
         // # Calculate area of triangle PAC  
-        let A2 = area(x1, y1, x, y, x3, y3) 
+        let A2 = area(p1, p, p3) 
         
         // # Calculate area of triangle PAB  
-        let A3 = area(x1, y1, x2, y2, x, y)
+        let A3 = area(p1, p2, p3)
 
         if(A == A1 + A2 + A3) {
             return true
@@ -167,7 +163,6 @@ class Room {
 
 module.exports = class NavMesh {
     constructor(options) {
-        this.funcs   = []
         this.options = options
         
         this.rooms   = new Graph({trackNodes: true})
@@ -184,7 +179,10 @@ module.exports = class NavMesh {
         // * were outside of the rooms
         // * were inside a room
 
-        let node = this.portals.addNode({x: x, y: y, rooms: []})
+        let node = this.portals.addNode({})
+        node.x = x
+        node.y = y
+        node.rooms = []
         let room = this.getRoomContaining(node)
 
         if (this.rooms.getTotalNodes() == 0) {
@@ -202,13 +200,9 @@ module.exports = class NavMesh {
             let minDist = 0
 
             for (let portal of this.portals.allEdges()) {
-                let from = portal.nodes[0].data
-                let to   = portal.nodes[1].data
-
                 let dist = distToLine(
-                    from.x, from.y,
-                    to.x, to.y,
-                    node.data.x, node.data.y
+                    ...portal.nodes,
+                    node
                 )
 
                 if (!closest || dist < minDist) {
@@ -224,9 +218,31 @@ module.exports = class NavMesh {
         return node
     }
 
+    addEdge(node1, node2) {
+        let edge = this.portals.getEdge(node1, node2)
+
+        if ( edge ) {
+            if ( edge.data.rooms.length == 2 ) {
+                this.rooms.removeEdge( this.rooms.getEdge(
+                    edge.data.rooms[0].id,
+                    edge.data.rooms[1].id
+                ) )
+            }
+        } else {
+            if (!this.addSplitEdge(event.edge)) {
+                return false
+            }
+
+            edge = this.portals.addEdge(node1, node2)
+        }
+
+        Event.fire(this.addEdgeEvent, edge)
+        return edge
+    }
+
     getRoomContaining(node) {
         for (let room in this.rooms.allNodes()) {
-            if (room.data.contains(node.data.x, node.data.y)) {
+            if (room.data.contains(node)) {
                 return room.data
             }
         }
@@ -237,20 +253,17 @@ module.exports = class NavMesh {
         node.data = new Room(points, node, this)
     }
 
-    addSplitEdge(edge) {
+    addSplitEdge(from, to) {
         let merge = []
-
-        let from = edge.nodes[0]
-        let to   = edge.nodes[1]
         
         for (let room of from.data.rooms) {
             let nodes = []
     
-            if ( room.p1.id != edge.fromId ) { nodes.push(room.p1) }
-            if ( room.p2.id != edge.fromId ) { nodes.push(room.p2) }
-            if ( room.p3.id != edge.fromId ) { nodes.push(room.p3) }
+            if ( room.p1 != from ) { nodes.push(room.p1) }
+            if ( room.p2 != from ) { nodes.push(room.p2) }
+            if ( room.p3 != from ) { nodes.push(room.p3) }
     
-            if ( intersect(from.data, to.data, nodes[0].data, nodes[1].data) ) {
+            if ( intersect(from, to, ...nodes) ) {
                 merge.push(room)
 
                 let portal = this.portals.getEdge(nodes[0].id, nodes[1].id)
@@ -279,8 +292,7 @@ module.exports = class NavMesh {
 
                         if ( intersect(
                             from, to,
-                            this.graph.getNode(edge.fromId).data,
-                            this.graph.getNode(edge.toId).data
+                            ...edge.nodes
                         ) ) {
                             portal = edge
 
@@ -299,13 +311,8 @@ module.exports = class NavMesh {
         for (let room of merge) {
             for (let p of [room.p1, room.p2, room.p3]) {
                 if (p.id !== edge.toId || p.id !== edge.fromId) {
-                    let x0 = this.graph.getNode( edge.toId   ).data.x
-                    let y0 = this.graph.getNode( edge.toId   ).data.y
-                    let x1 = this.graph.getNode( edge.fromId ).data.x
-                    let y1 = this.graph.getNode( edge.fromId ).data.y
-                    let x2 = p.data.x
-                    let y2 = p.data.y
-                    let dir = (x1 - x0) * (y2 - y0) - (x2 - x0) * (y1 - y0)
+                    let [p0, p1] = edge.nodes
+                    let dir = (p1.x - p0.x) * (p.y - p0.y) - (p.x - p0.x) * (p1.y - p0.y)
     
                     if (dir > 0) {
                         right.push(p)
