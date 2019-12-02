@@ -39,7 +39,7 @@ module.exports = function(navMesh, options) {
             sprite.on("mousedown", (event) => {
                 sprite.alpha = 0.5
                 sprite.dragging = true
-                sprite.dragData = event.data
+                sprite.dragData = event
             })
             sprite.on("mousemove", () => {
                 if (sprite.dragging) {
@@ -65,7 +65,7 @@ module.exports = function(navMesh, options) {
         }
 
         stage.addChild(sprite)
-        node.data[symbol] = sprite
+        node[symbol] = sprite
     }
 
     function initLink(link) {
@@ -83,46 +83,46 @@ module.exports = function(navMesh, options) {
         sprite.lineTo( to.x   , to.y   )
 
         stage.addChild(sprite)
-        link.data[symbol] = sprite
+        link[symbol] = sprite
     }
 
     function updateNode(node) {
-        node.data[symbol].x = node.x
-        node.data[symbol].y = node.y
+        node[symbol].x = node.x
+        node[symbol].y = node.y
     }
 
     function updateLink(link) {
         let from = link.nodes[0]
         let to   = link.nodes[1]
 
-        link.data[symbol].clear()
+        link[symbol].clear()
 
-        link.data[symbol].lineStyle(
+        link[symbol].lineStyle(
             options.linkWidth,
             options.linkColor
         )
-        link.data[symbol].moveTo( from.x , from.y )
-        link.data[symbol].lineTo( to.x   , to.y   )
+        link[symbol].moveTo( from.x , from.y )
+        link[symbol].lineTo( to.x   , to.y   )
     }
 
     function removeNode(node) {
-        node.data[symbol].clear()
-        stage.removeChild( node.data[symbol] )
+        node[symbol].clear()
+        stage.removeChild( node[symbol] )
     }
 
     function removeLink(link) {
-        if (symbol in link.data) { // TODO: this is temperary
-            link.data[symbol].clear()
-            stage.removeChild( link.data[symbol] )
+        if (symbol in link) { // TODO: this is temperary
+            link[symbol].clear()
+            stage.removeChild( link[symbol] )
         }
     }
+
 
     Event.on(navMesh.addNodeEvent, (node) => {
         initNode(node)
     })
 
-    Event.on(navMesh.addEdgeEvent, (link) => {
-        console.log("hi")
+    Event.on(navMesh.addPortEvent, (link) => {
         initLink(link)
     })
 
