@@ -34,8 +34,8 @@ let t1 = navMesh.addNode({x: 300, y: 300}, "t1")
 let t2 = navMesh.addNode({x: 300, y: 500}, "t2")
 let t3 = navMesh.addNode({x: 500, y: 300}, "t3")
 
-// navMesh.addEdge(t1, t2, {})
-// navMesh.addEdge(t1, t3, {})
+navMesh.addEdge(t1, t2, {})
+navMesh.addEdge(t1, t3, {})
 
 // let n1 = navMesh.addNode(800, 800, "n1")
 // let n2 = navMesh.addNode(800, 600, "n2")

@@ -1,4 +1,4 @@
-const Graph  = require("./Graph")
+const Graph  = require("struk.graph")
 const earcut = require("earcut")
 const Event  = require("./EventMonger")
 
@@ -178,7 +178,7 @@ module.exports = class NavMesh {
 
         let procRoom = (room, source) => {
             // look throught all the edges in the room
-            for (let edge of room.edges) {
+            for (let edge of room.portals) {
                 // we came from this edge, dont cheack it again
                 if (edge == source) { continue }
 
@@ -208,7 +208,7 @@ module.exports = class NavMesh {
         // figure out what conected room the line goes throught or if
         // they are in the same room. Then recusivly get all the rooms.
         for (let room of from.rooms) {
-            for (let edge of room.edges) {
+            for (let edge of room.portals) {
                 // The target node is in the same room as the origin
                 if (edge.nodes[0] == to) {
                     addRoomNodes(room)
@@ -227,8 +227,6 @@ module.exports = class NavMesh {
                             edge.rooms[1] :
                             edge.rooms[0]
 
-                    console.log( edge.toString() )
-
                     addRoomNodes(room)    
                     procRoom(nextRoom, edge)
                 }
@@ -244,8 +242,8 @@ module.exports = class NavMesh {
         edge = this.setUpPortal(from, to)
 
         // turn the two sides into rooms
-        this.polygoneToRooms(left)
-        this.polygoneToRooms(right)
+        this.polygoneToRooms( [...left]  )
+        this.polygoneToRooms( [...right] )
 
         // return the edge
         return edge
@@ -289,21 +287,15 @@ module.exports = class NavMesh {
 
     setUpPortal(from, to) {
         for (let room of this.rooms.allNodes()) {
-            for (let edge of room.edges) {
+            for (let edge of room.portals) {
                 if (edge.nodes[0] !== from && edge.nodes[1] !== from) {
                     continue
                 }
                 if (edge.nodes[0] !== to && edge.nodes[1] !== to) {
                     continue
                 }
-        
-                console.log(edge.toString())
-
-                console.log( edge.nodes )
-        
             }
         }
-        console.log(`================================${uid}`)
 
         let edge = this.portals.addEdge(from, to, uid); uid++
         edge.toString = () => `[${from} -> ${to}]#${edge.data}`
@@ -323,7 +315,7 @@ module.exports = class NavMesh {
         let room = this.rooms.addNode(uid); uid++
         nodes.toString = () => ",".join( nodes )
         room.nodes = nodes
-        room.edges = []
+        room.portals = []
 
         // add room to all the nodes
         nodes.forEach(node => node.rooms.push(room))
@@ -340,7 +332,7 @@ module.exports = class NavMesh {
 
             // update the refrences
             edge.rooms.push(room)
-            room.edges.push(edge)
+            room.portals.push(edge)
         }
 
         // calculate the center of mass
@@ -361,7 +353,7 @@ module.exports = class NavMesh {
         }
 
         // remove room from edges refrences
-        for (let edge of room.edges) {
+        for (let edge of room.portals) {
             edge.rooms = edge.rooms.filter( item => item != room )
 
             // if the edge isnt connected to any rooms remove it
