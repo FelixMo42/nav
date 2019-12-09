@@ -2,7 +2,7 @@
 
 const PIXI        = require("pixi.js")
 const GraphSprite = require("./GraphSprite")
-const NavMesh     = require("./NavMesh2")
+const NavMesh     = require("./NavMesh")
 // const Event       = require("./EventMonger")
 // const _           = require("lodash")
 // const Vector      = require("./struc/Vector")

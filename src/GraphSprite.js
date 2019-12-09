@@ -12,7 +12,7 @@ module.exports = function(navMesh, options) {
 
         nodeRadius: 10,
         nodeColor: 0x00ff00,
-        nodeDraggable: false,
+        nodeDraggable: true,
 
         linkWidth: 6,
         linkColor: 0x00ff00
@@ -39,11 +39,12 @@ module.exports = function(navMesh, options) {
             sprite.on("mousedown", (event) => {
                 sprite.alpha = 0.5
                 sprite.dragging = true
-                sprite.dragData = event
+                sprite.dragData = event.data
             })
             sprite.on("mousemove", () => {
                 if (sprite.dragging) {
-                    var newPosition = sprite.dragData.getLocalPosition(sprite.parent)
+                    var newPosition =
+                        sprite.dragData.getLocalPosition(sprite.parent)
         
                     sprite.x = newPosition.x
                     sprite.y = newPosition.y
@@ -53,14 +54,14 @@ module.exports = function(navMesh, options) {
                 sprite.alpha = 1
                 sprite.dragging = false
                 sprite.dragData = null
-                
-                node.x = sprite.x
-                node.y = sprite.y
 
-                // Event.fire("changed", [{
-                //     changeType: "move",
-                //     node: node
-                // }])
+                let newX = sprite.x
+                let newY = sprite.y
+                
+                sprite.x = node.x
+                sprite.y = node.y
+
+                navMesh.moveNode(node, newX, newY)
             })
         }
 
@@ -117,19 +118,6 @@ module.exports = function(navMesh, options) {
         }
     }
 
-    Event.on(navMesh.addNodeEvent, (node) => {
-        initNode(node)
-    })
-
-    Event.on(navMesh.addPortEvent, (link) => {
-        initLink(link)
-    })
-
-    Event.on(navMesh.removePortEvent, (link) => {
-        removeLink(link)
-    })
-
-
     function initRoom(room) {
         let sprite = new PIXI.Graphics()
 
@@ -143,6 +131,32 @@ module.exports = function(navMesh, options) {
         stage.addChild(sprite)
         room[symbol] = sprite
     }
+
+    // node events
+
+    Event.on(navMesh.addNodeEvent, (node) => {
+        initNode(node)
+    })
+
+    Event.on(navMesh.updateNodeEvent, (node) => {
+        updateNode(node)
+    })
+
+    // portal events
+
+    Event.on(navMesh.addEdgeEvent, (link) => {
+        initLink(link)
+    })
+
+    Event.on(navMesh.updateEdgeEvent, (node) => {
+        updateLink(node)
+    })
+
+    Event.on(navMesh.removeEdgeEvent, (link) => {
+        removeLink(link)
+    })
+
+    // room events
 
     Event.on(navMesh.addRoomEvent, (room) => {
         initRoom(room)

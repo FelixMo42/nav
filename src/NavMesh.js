@@ -1,31 +1,29 @@
 const Graph  = require("struk.graph")
 const earcut = require("earcut")
-const Vector = require("./struc/Vector")
-const _      = require("lodash")
 const Event  = require("./EventMonger")
+
+let uid = 0
+
+function *forEachCirc(array) {
+    let length = array.length
+    for (let i = 0; i < length; i++) {
+        yield [
+            array[i],
+            array[ (i + 1) % length ]
+        ]
+    }
+}
 
 function area(p1, p2, p3) {
     return Math.abs((p1.x * (p2.y - p3.y) + p2.x * (p3.y - p1.y) + p3.x * (p1.y - p2.y)) / 2.0) 
 }
 
-function distToLine(p1, p2, p) {
-    //https://en.wikipedia.org/wiki/Distance_from_a_point_to_a_line#Vector_formulation
-
-    let n = new Vector(p1)
-        .sub( new Vector({x: p2.x, y: p2.y}) )
-        .normalize()
-    
-    let a = new Vector(p2)
-
-    return a.sub(p).sub( n.mul( a.sub(p).dot(n) ) ).mag()
-}
-
 function orientation(p1, p2, p3) {
-    let val = (p2.y - p1.y) * (p3.x - p2.x) - (p2.x - p1.x) * (p3.y - p2.y)
+    let dir = (p2.y - p1.y) * (p3.x - p2.x) - (p2.x - p1.x) * (p3.y - p2.y)
 
-    if (val == 0) return 0
+    if (dir == 0) { return 0 }
 
-    return (val > 0)? 1: 2
+    return (dir > 0) ? 1 : -1
 }
 
 function onSegment(p, q, r) {
@@ -71,289 +69,330 @@ function intersect(p1, q1, p2, q2) {
     return false
 }
 
-class Room {
-    constructor(points, node, navMesh) {
-        this.node    = node
-        this.navMesh = navMesh
-
-        this.points = points
-        this.points.forEach(point => {
-            point.rooms.push( this )
-        })
-
-        this.calculatePosition()
-
-        this.edges = []
-        for (let i = 0; i < this.points.length; i++) {
-            let from = this.points[i]
-            let to   = this.points[i == 0 ? points.length - 1 : i - 1]
-
-            let edge = this.navMesh.portals.getEdge(from, to)
-
-            if (edge) {
-                edge.data.rooms.push(this)
-
-                if ( !edge.data.isWall ) {
-                    this.navMesh.rooms.addEdge(
-                        edge.data.rooms[0].node,
-                        edge.data.rooms[1].node,
-                        {}
-                    )
-                }
-            } else {
-                edge = this.navMesh.portals.addEdge(from, to, {rooms: [this]})
-            }
-
-            this.edges.push(edge)
-        }
-    }
-
-    calculatePosition() {
-        let {x, y} = this.points.reduce((point, positon) =>
-            ({x: positon.x + point.x, y: positon.y + point.y})
-        )
-
-        this.x = x / this.points.length
-        this.y = y / this.points.length
-    }
-
-    update() {
-        this.calculatePosition()
-    }
-
-    clear() {
-        for (let point in this.points) {
-            point.rooms = point.rooms.filter( item => item != this )
-        }
-
-        for (let edge in this.edges) {
-            edge.data.rooms = edge.data.rooms.filter( item => item != this )
-
-            if (edge.data.rooms.length == 0 && edge.data.isWall == false) {
-                this.portals.removeEdge(edge)
-            }
-        }
-
-        this.navMesh.rooms.removeNode(this.node)
-    }
-
-    contains(p) {
-        let p1 = this.points[0]
-        let p2 = this.points[1]
-        let p3 = this.points[2]
-
-        let A = area(p1, p2, p3) 
+function contains(p1, p2, p3, p) {
+    // Calculate area of full triangle ABC
+    let A = area(p1, p2, p3) 
   
-        // # Calculate area of triangle PBC  
-        let A1 = area(p, p2, p3) 
-        
-        // # Calculate area of triangle PAC  
-        let A2 = area(p1, p, p3) 
-        
-        // # Calculate area of triangle PAB  
-        let A3 = area(p1, p2, p3)
+    // Calculate area of partal triangle PBC  
+    let A1 = area(p, p2, p3) 
+    
+    // Calculate area of partal triangle APC  
+    let A2 = area(p1, p, p3) 
+    
+    // Calculate area of partal triangle ABP  
+    let A3 = area(p1, p2, p)
 
-        if(A == A1 + A2 + A3) {
-            return true
-        } else {
-            return false
-        }
-    }
+    // do the area add up to the same thing?
+    return A == A1 + A2 + A3
 }
 
 module.exports = class NavMesh {
     constructor(options) {
+        // store the options
         this.options = options
-        
-        this.rooms   = new Graph({trackNodes: true})
-        this.portals = new Graph({trackNodes: true, trackEdges: true})
 
+        // create the needed graphs
+        this.rooms   = new Graph({trackNodes: true})
+        this.portals = new Graph({trackNodes: true})
+
+        // create events for the NavMesh
         this.addNodeEvent = Event.newEvent()
         this.addEdgeEvent = Event.newEvent()
+        this.addPortEvent = Event.newEvent()
+        this.addRoomEvent = Event.newEvent()
+
+        this.removeNodeEvent = Event.newEvent()
+        this.removeEdgeEvent = Event.newEvent()
+        this.removePortEvent = Event.newEvent()
+        this.removeRoomEvent = Event.newEvent()
     }
 
-    addNode(x, y) {
+    makeShell(shell) {
+        // get the number of points in the shell
+        let shapeSize = shell.length
 
-        // cases:
-        // * there are no rooms
-        // * were outside of the rooms
-        // * were inside a room
-
-        let node = this.portals.addNode({})
-        node.x = x
-        node.y = y
-        node.rooms = []
-        let room = this.getRoomContaining(node)
-
-        if (this.rooms.getTotalNodes() == 0) {
-            if (this.portals.getTotalNodes() == 3) {
-                this.createRoom(...this.portals.allNodes())
-            }
-        } else if ( room ) {
-            room.delete()
-
-            this.createRoom(node, room.p1, room.p2)
-            this.createRoom(node, room.p1, room.p3)
-            this.createRoom(node, room.p2, room.p3)
-        } else {
-            let closest = false
-            let minDist = 0
-
-            for (let portal of this.portals.allEdges()) {
-                let dist = distToLine(
-                    ...portal.nodes,
-                    node
-                )
-
-                if (!closest || dist < minDist) {
-                    closest = portal
-                    minDist = dist
-                }
-            }
-
-            this.createRoom(node, ...closest.nodes)
+        // the shell needs to be a polygone, so at least 3 points
+        if (shapeSize < 3) {
+            return false
         }
 
-        Event.fire(this.addNodeEvent, node)
+        // Create nodes for outside edge
+        let nodes = shell.map(pos => this.setUpNode(pos))
+
+        // turn the shell into polygones
+        this.polygoneToRooms(nodes)
+
+        // Make the sides unwalkable
+        // for (let i = 0; i < shapeSize; i++) {
+        //     this.addEdge( nodes[i], nodes[(i + 1) % shapeSize] )
+        // }
+
+        // return the nodes
+        return nodes
+    }
+
+    addNode(position) {
+        // create the node
+        let node = this.setUpNode(position)
+
+        // get the room containing the position
+        let room = this.getRoomContaining(position)
+
+        // remove the old room
+        this.removeRoom(room)
+
+        // split the room into parts and the new rooms
+        for (let [node1, node2] of forEachCirc(room.nodes)) {
+            this.addRoom([node1, node2, node])
+        }
+
+        // return the node
         return node
     }
 
-    addEdge(node1, node2) {
-        let edge = this.portals.getEdge(node1, node2)
-
+    addEdge(from, to) {
+        // if the edge all ready exist then were good, just return that
+        let edge = this.portals.getEdge(from, to)
         if ( edge ) {
-            if ( edge.data.rooms.length == 2 ) {
-                this.rooms.removeEdge( this.rooms.getEdge(
-                    edge.data.rooms[0].id,
-                    edge.data.rooms[1].id
-                ) )
-            }
-        } else {
-            if (!this.addSplitEdge(event.edge)) {
-                return false
-            }
-
-            edge = this.portals.addEdge(node1, node2)
+            return edge
         }
 
-        Event.fire(this.addEdgeEvent, edge)
+        // keep track of the nodes on both side of the line and
+        // the rooms we visite
+        let left  = new Set([from, to])
+        let right = new Set([from, to])
+        let rooms = []
+
+
+        let addRoomNodes = (room) => {
+            rooms.push(room)
+
+            for (let node of room.nodes) {
+                if (orientation(from, to, node) > 0) {
+                    left.add( node )
+                } else {
+                    right.add( node )
+                }
+            }
+        }
+
+        let procRoom = (room, source) => {
+            // look throught all the edges in the room
+            for (let edge of room.portals) {
+                // we came from this edge, dont cheack it again
+                if (edge == source) { continue }
+
+                // weve reached are destination!
+                if (edge.nodes[0] == to) {
+                    addRoomNodes(room)
+                    return true
+                }
+
+                // do we cross a line
+                if ( intersect(...edge.nodes, from, to) ) {
+                    let nextRoom =
+                        edge.rooms[0] === room ?
+                            edge.rooms[1] :
+                            edge.rooms[0]
+
+                    addRoomNodes(nextRoom)
+                        
+                    return procRoom(nextRoom, edge)
+                }
+            }
+
+            // our mission was a failer, report that back
+            return false
+        }
+
+        // figure out what conected room the line goes throught or if
+        // they are in the same room. Then recusivly get all the rooms.
+        for (let room of from.rooms) {
+            for (let edge of room.portals) {
+                // The target node is in the same room as the origin
+                if (edge.nodes[0] == to) {
+                    addRoomNodes(room)
+                    break
+                }
+
+                // skip it if edge leads to origin node
+                if (edge.nodes[0] == from || edge.nodes[1] == from) {
+                    continue
+                }
+
+                // do we cross a line
+                if ( intersect(...edge.nodes, from, to) ) {
+                    let nextRoom =
+                        edge.rooms[0] === room ?
+                            edge.rooms[1] :
+                            edge.rooms[0]
+
+                    addRoomNodes(room)    
+                    procRoom(nextRoom, edge)
+                }
+            }
+        }
+
+        // delete all the rooms we go throught
+        for (let room of rooms) {
+            this.removeRoom( room )
+        }
+
+        // Its safe, we can create the edge
+        edge = this.setUpPortal(from, to)
+
+        // turn the two sides into rooms
+        this.polygoneToRooms( [...left]  )
+        this.polygoneToRooms( [...right] )
+
+        // return the edge
         return edge
     }
 
-    getRoomContaining(node) {
-        for (let room in this.rooms.allNodes()) {
-            if (room.data.contains(node)) {
-                return room.data
+    *perimeter(room) {
+        for (let endPoints of forEachCirc(room.nodes)) {
+            yield this.portals.getEdge(...endPoints)
+        }
+    }
+
+    // get it //
+
+    getRoomContaining(position) {
+        for (let room of this.rooms.allNodes()) {
+            if ( contains(...room.nodes, position) ) {
+                return room
             }
         }
     }
 
-    createRoom(...points) {
-        let node = this.rooms.addNode()
-        node.data = new Room(points, node, this)
+    /////////////////
+    // PRIVATE API //
+    /////////////////
+
+    // set up //
+
+    setUpNode({x, y}) {
+        let node = this.portals.addNode(uid); uid++
+        node.toString = () => `(${x},${y}#${node.data})`
+        node.rooms = []
+        node.x = x
+        node.y = y
+
+        // fire the relevant event
+        Event.fire(this.addNodeEvent, node)
+
+        // return the node
+        return node
     }
 
-    addSplitEdge(from, to) {
-        let merge = []
-        
-        for (let room of from.data.rooms) {
-            let nodes = []
-    
-            if ( room.p1 != from ) { nodes.push(room.p1) }
-            if ( room.p2 != from ) { nodes.push(room.p2) }
-            if ( room.p3 != from ) { nodes.push(room.p3) }
-    
-            if ( intersect(from, to, ...nodes) ) {
-                merge.push(room)
-
-                let portal = this.portals.getEdge(nodes[0].id, nodes[1].id)
-
-                let i = 0
-
-                while (true) {                   
-                    if ( portal.data.rooms.length == 1 ) {
-                        break
-                    }
-
-                    let room = portal.data.rooms[0] != _.last(merge) ?
-                        portal.data.rooms[0] : 
-                        portal.data.rooms[1]
-
-                    merge.push(room)
-
-                    if ( room.points.some( point => point.id == edge.toId ) ) {
-                        break
-                    }
-
-                    for (let edge of room.edges) {
-                        if (edge == portal) {
-                            continue
-                        }
-
-                        if ( intersect(
-                            from, to,
-                            ...edge.nodes
-                        ) ) {
-                            portal = edge
-
-                            break
-                        }
-                    }
+    setUpPortal(from, to) {
+        for (let room of this.rooms.allNodes()) {
+            for (let edge of room.portals) {
+                if (edge.nodes[0] !== from && edge.nodes[1] !== from) {
+                    continue
                 }
-
-                break
-            }
-        }
-    
-        let left  = []
-        let right = []
-    
-        for (let room of merge) {
-            for (let p of [room.p1, room.p2, room.p3]) {
-                if (p.id !== edge.toId || p.id !== edge.fromId) {
-                    let [p0, p1] = edge.nodes
-                    let dir = (p1.x - p0.x) * (p.y - p0.y) - (p.x - p0.x) * (p1.y - p0.y)
-    
-                    if (dir > 0) {
-                        right.push(p)
-                    } else if (dir < 0) {
-                        left.push(p)
-                    } else {
-                        right.push(p)
-                        left.push(p)
-                    }
+                if (edge.nodes[0] !== to && edge.nodes[1] !== to) {
+                    continue
                 }
             }
-    
-            room.delete()
         }
-    
-        left  = _.uniq( left  )
-        right = _.uniq( right )
-    
-        this.polygoneToRoom(left)
-        this.polygoneToRoom(right)
-    }
-    
-    polygoneToRoom(points) {
-        let pos = []
-        for (let node of points) {
-            pos.push(node.data.x)
-            pos.push(node.data.y)
-        }
-    
-        let tris = earcut(pos)
-        for (let i = 0; i < tris.length; i += 3) {
-            this.createRoom(
-                points[ tris[i + 0] ],
-                points[ tris[i + 1] ],
-                points[ tris[i + 2] ]
-            )
-        }
+
+        let edge = this.portals.addEdge(from, to, uid); uid++
+        edge.toString = () => `[${from} -> ${to}]#${edge.data}`
+        edge.rooms = []
+
+        // fire the relevant event
+        Event.fire(this.addPortEvent, edge)
+
+        // return the edge
+        return edge
     }
 
-    optimize(room1, room2) {
-        let portal = this.rooms.getEdge(room1.id, room2.id)
-        
+    // room //
+
+    addRoom(nodes) {
+        // create room node in graph
+        let room = this.rooms.addNode(uid); uid++
+        nodes.toString = () => ",".join( nodes )
+        room.nodes = nodes
+        room.portals = []
+
+        // add room to all the nodes
+        nodes.forEach(node => node.rooms.push(room))
+
+        // get the rooms edges
+        for (let [from, to] of forEachCirc(nodes) ) {
+            // get edge bettween endpoints
+            let edge = this.portals.getEdge(from, to)
+
+            // create the edge if it doesent exist
+            if (!edge) {
+                edge = this.setUpPortal(from, to)
+            }
+
+            // update the refrences
+            edge.rooms.push(room)
+            room.portals.push(edge)
+        }
+
+        // calculate the center of mass
+        room.x = nodes.reduce((x, node) => x + node.x, 0) / nodes.length
+        room.y = nodes.reduce((y, node) => y + node.y, 0) / nodes.length
+
+        // fire the relevant event
+        Event.fire(this.addRoomEvent, room)
+
+        // return the room
+        return room
+    }
+
+    removeRoom(room) {
+        // remove room from nodes refrences
+        for (let node of room.nodes) {
+            node.rooms = node.rooms.filter( item => item != room )
+        }
+
+        // remove room from edges refrences
+        for (let edge of room.portals) {
+            edge.rooms = edge.rooms.filter( item => item != room )
+
+            // if the edge isnt connected to any rooms remove it
+            if (edge.rooms.length == 0) {
+                this.portals.removeEdge(edge)
+
+                // fire the relevant event
+                Event.fire(this.removePortEvent, edge)
+            }
+        }
+
+        // remove room from rooms graph
+        this.rooms.removeNode(room)
+
+        // fire the relevant event
+        Event.fire(this.removeRoomEvent, room)
+
+        // return the room
+        return room
+    }
+
+    polygoneToRooms(nodes) {
+        // make a earcut compatible list of positions
+        let positions = []
+        for (let {x, y} of nodes) {
+            positions.push(x)
+            positions.push(y)
+        }
+
+        // use earcut for polygon triangulation
+        let triangles = earcut(positions)
+
+        // turn triangles into rooms
+        for (let i = 0; i < triangles.length; i += 3) {
+            this.addRoom([
+                nodes[ triangles[i + 0] ],
+                nodes[ triangles[i + 1] ],
+                nodes[ triangles[i + 2] ]
+            ])
+        }
     }
 }
