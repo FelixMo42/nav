@@ -132,39 +132,36 @@ module.exports = function(navMesh, options) {
         room[symbol] = sprite
     }
 
+    // function updateRoom(room) {
+    //     let sprite = new PIXI.Graphics()
+
+    //     sprite.x = room.x
+    //     sprite.y = room.y
+
+    //     sprite.beginFill(options.nodeColor)
+    //     sprite.drawCircle(0, 0, options.nodeRadius)
+    //     sprite.endFill()
+
+    //     stage.addChild(sprite)
+    //     room[symbol] = sprite
+    // }
+
     // node events
 
-    Event.on(navMesh.addNodeEvent, (node) => {
-        initNode(node)
-    })
+    Event.on(navMesh.addNodeEvent,    initNode)
+    Event.on(navMesh.updateNodeEvent, updateNode)
 
-    Event.on(navMesh.updateNodeEvent, (node) => {
-        updateNode(node)
-    })
+    // edge events
 
-    // portal events
-
-    Event.on(navMesh.addEdgeEvent, (link) => {
-        initLink(link)
-    })
-
-    Event.on(navMesh.updateEdgeEvent, (node) => {
-        updateLink(node)
-    })
-
-    Event.on(navMesh.removeEdgeEvent, (link) => {
-        removeLink(link)
-    })
+    Event.on(navMesh.addEdgeEvent,    initLink)
+    Event.on(navMesh.updateEdgeEvent, updateLink)
+    Event.on(navMesh.removeEdgeEvent, removeLink)
 
     // room events
 
-    Event.on(navMesh.addRoomEvent, (room) => {
-        initRoom(room)
-    })
-
-    Event.on(navMesh.removeRoomEvent, (room) => {
-        removeNode(room)
-    })
+    Event.on(navMesh.addRoomEvent,    initRoom)
+    Event.on(navMesh.updateRoomEvent, updateNode)
+    Event.on(navMesh.removeRoomEvent, removeNode)
 
     return stage
 }

@@ -253,6 +253,25 @@ module.exports = class NavMesh {
         return edge
     }
 
+    // move it //
+
+    moveNode(node, x, y) {
+        node.x = x
+        node.y = y
+
+        Event.fire(this.updateNodeEvent, node)
+
+        for (let room of node.rooms) {
+            this.calculateRoomCenter(room)
+
+            Event.fire(this.updateRoomEvent, room)
+        }
+
+        for (let edge of node.edges) {
+            Event.fire(this.updateEdgeEvent, edge)
+        }
+    }
+
     // get it //
 
     getRoomContaining(position) {
@@ -334,14 +353,20 @@ module.exports = class NavMesh {
         }
 
         // calculate the center of mass
-        room.x = nodes.reduce((x, node) => x + node.x, 0) / nodes.length
-        room.y = nodes.reduce((y, node) => y + node.y, 0) / nodes.length
+        this.calculateRoomCenter(room)
 
         // fire the relevant event
         Event.fire(this.addRoomEvent, room)
 
         // return the room
         return room
+    }
+
+    calculateRoomCenter(room) {
+        let length = room.nodes.length
+
+        room.x = room.nodes.reduce((x, node) => x + node.x, 0) / length
+        room.y = room.nodes.reduce((y, node) => y + node.y, 0) / length
     }
 
     removeRoom(room) {
