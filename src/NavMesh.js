@@ -125,9 +125,9 @@ module.exports = class NavMesh {
         this.polygoneToRooms(nodes)
 
         // Make the sides unwalkable
-        // for (let i = 0; i < shapeSize; i++) {
-        //     this.addEdge( nodes[i], nodes[(i + 1) % shapeSize] )
-        // }
+        for (let i = 0; i < shapeSize; i++) {
+            this.addEdge( nodes[i], nodes[(i + 1) % shapeSize] )
+        }
 
         // return the nodes
         return nodes
@@ -158,6 +158,9 @@ module.exports = class NavMesh {
         // if the edge all ready exist then were good, just return that
         let edge = this.edges.getEdge(from, to)
         if ( edge ) {
+            edge.wall = true
+            edge.color = 0xcb4154
+            Event.fire(this.updateEdgeEvent, edge)
             return edge
         }
 
@@ -243,7 +246,7 @@ module.exports = class NavMesh {
         }
 
         // Its safe, we can create the edge
-        edge = this.setUpEdge(from, to)
+        edge = this.setUpEdge(from, to, true)
 
         // turn the two sides into rooms
         this.polygoneToRooms( [...left]  )
@@ -259,8 +262,14 @@ module.exports = class NavMesh {
         node.x = x
         node.y = y
 
-        for (let ray of node.edges) {
-            for (let room of node.rooms) {
+        let checkRooms = new Set()
+        let infectedRooms = new Set()
+
+        function checkRoom(room) {
+            if (checkRooms.has(room)) { return }
+            checkRooms.add(room)
+
+            for (let ray of node.edges) {
                 for (let edge of room.paths) {
                     if ( edge.nodes.includes(node) ) { continue }
 
@@ -269,13 +278,23 @@ module.exports = class NavMesh {
 
                     if ( intersect(...ray.nodes, ...edge.nodes) ) {
                         edge.color = 0xFF0000
-                        Event.fire(this.updateEdgeEvent, edge)
-
                         ray.color = 0x0000FF
-                        Event.fire(this.updateEdgeEvent, ray)
+
+                        infectedRooms.add( room )
+
+                        checkRoom( edge.rooms[0] )
+                        checkRoom( edge.rooms[1] )
                     }
                 }
             }
+        }
+
+        for (let room of node.rooms) {
+            checkRoom(room)
+        }
+
+        for (let room of infectedRooms) {
+            this.removeRoom(room)
         }
 
         Event.fire(this.updateNodeEvent, node)
@@ -321,7 +340,7 @@ module.exports = class NavMesh {
         return node
     }
 
-    setUpEdge(from, to) {
+    setUpEdge(from, to, wall) {
         for (let room of this.rooms.allNodes()) {
             for (let edge of room.paths) {
                 if (edge.nodes[0] !== from && edge.nodes[1] !== from) {
@@ -336,6 +355,9 @@ module.exports = class NavMesh {
         let edge = this.edges.addEdge(from, to, uid); uid++
         edge.toString = () => `[${from} -> ${to}]#${edge.data}`
         edge.rooms = []
+
+        edge.wall = wall
+        if (wall) {edge.color = 0xcb4154}
 
         // fire the relevant event
         Event.fire(this.addEdgeEvent, edge)
@@ -398,8 +420,8 @@ module.exports = class NavMesh {
         for (let edge of room.paths) {
             edge.rooms = edge.rooms.filter( item => item != room )
 
-            // if the edge isnt connected to any rooms remove it
-            if (edge.rooms.length == 0) {
+            // if the edge isnt connected to any rooms and not a wall remove it
+            if (edge.rooms.length == 0 && !edge.wall) {
                 this.edges.removeEdge(edge)
 
                 // fire the relevant event
