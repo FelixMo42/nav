@@ -77,7 +77,7 @@ module.exports = function(navMesh, options) {
 
         sprite.lineStyle(
             options.linkWidth,
-            options.linkColor
+            "color" in link ? link.color : options.linkColor
         )
 
         sprite.moveTo( from.x , from.y )
@@ -100,8 +100,9 @@ module.exports = function(navMesh, options) {
 
         link[symbol].lineStyle(
             options.linkWidth,
-            options.linkColor
+            "color" in link ? link.color : options.linkColor
         )
+
         link[symbol].moveTo( from.x , from.y )
         link[symbol].lineTo( to.x   , to.y   )
     }

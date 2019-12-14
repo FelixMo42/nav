@@ -259,6 +259,25 @@ module.exports = class NavMesh {
         node.x = x
         node.y = y
 
+        for (let ray of node.edges) {
+            for (let room of node.rooms) {
+                for (let edge of room.paths) {
+                    if ( edge.nodes.includes(node) ) { continue }
+
+                    if ( edge.nodes.includes( ray.nodes[0] ) ) { continue }
+                    if ( edge.nodes.includes( ray.nodes[1] ) ) { continue }
+
+                    if ( intersect(...ray.nodes, ...edge.nodes) ) {
+                        edge.color = 0xFF0000
+                        Event.fire(this.updateEdgeEvent, edge)
+
+                        ray.color = 0x0000FF
+                        Event.fire(this.updateEdgeEvent, ray)
+                    }
+                }
+            }
+        }
+
         Event.fire(this.updateNodeEvent, node)
 
         for (let room of node.rooms) {
