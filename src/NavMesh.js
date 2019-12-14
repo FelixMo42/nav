@@ -92,18 +92,20 @@ module.exports = class NavMesh {
         this.options = options
 
         // create the needed graphs
-        this.rooms   = new Graph({trackNodes: true})
-        this.portals = new Graph({trackNodes: true})
+        this.rooms = new Graph({trackNodes: true})
+        this.edges = new Graph({trackNodes: true})
 
         // create events for the NavMesh
         this.addNodeEvent = Event.newEvent()
         this.addEdgeEvent = Event.newEvent()
-        this.addPortEvent = Event.newEvent()
         this.addRoomEvent = Event.newEvent()
+
+        this.updateNodeEvent = Event.newEvent()
+        this.updateEdgeEvent = Event.newEvent()
+        this.updateRoomEvent = Event.newEvent()
 
         this.removeNodeEvent = Event.newEvent()
         this.removeEdgeEvent = Event.newEvent()
-        this.removePortEvent = Event.newEvent()
         this.removeRoomEvent = Event.newEvent()
     }
 
@@ -151,8 +153,10 @@ module.exports = class NavMesh {
     }
 
     addEdge(from, to) {
+        //TODO: make sure edge is wall
+
         // if the edge all ready exist then were good, just return that
-        let edge = this.portals.getEdge(from, to)
+        let edge = this.edges.getEdge(from, to)
         if ( edge ) {
             return edge
         }
@@ -178,9 +182,9 @@ module.exports = class NavMesh {
 
         let procRoom = (room, source) => {
             // look throught all the edges in the room
-            for (let edge of room.portals) {
+            for (let edge of room.paths) {
                 // we came from this edge, dont cheack it again
-                if (edge == source) { continue }
+                if (edge === source) { continue }
 
                 // weve reached are destination!
                 if (edge.nodes[0] == to) {
@@ -201,14 +205,14 @@ module.exports = class NavMesh {
                 }
             }
 
-            // our mission was a failer, report that back
+            // our mission was a failur, reedge that back
             return false
         }
 
         // figure out what conected room the line goes throught or if
         // they are in the same room. Then recusivly get all the rooms.
         for (let room of from.rooms) {
-            for (let edge of room.portals) {
+            for (let edge of room.paths) {
                 // The target node is in the same room as the origin
                 if (edge.nodes[0] == to) {
                     addRoomNodes(room)
@@ -239,7 +243,7 @@ module.exports = class NavMesh {
         }
 
         // Its safe, we can create the edge
-        edge = this.setUpPortal(from, to)
+        edge = this.setUpEdge(from, to)
 
         // turn the two sides into rooms
         this.polygoneToRooms( [...left]  )
@@ -247,12 +251,6 @@ module.exports = class NavMesh {
 
         // return the edge
         return edge
-    }
-
-    *perimeter(room) {
-        for (let endPoints of forEachCirc(room.nodes)) {
-            yield this.portals.getEdge(...endPoints)
-        }
     }
 
     // get it //
@@ -272,7 +270,7 @@ module.exports = class NavMesh {
     // set up //
 
     setUpNode({x, y}) {
-        let node = this.portals.addNode(uid); uid++
+        let node = this.edges.addNode(uid); uid++
         node.toString = () => `(${x},${y}#${node.data})`
         node.rooms = []
         node.x = x
@@ -285,9 +283,9 @@ module.exports = class NavMesh {
         return node
     }
 
-    setUpPortal(from, to) {
+    setUpEdge(from, to) {
         for (let room of this.rooms.allNodes()) {
-            for (let edge of room.portals) {
+            for (let edge of room.paths) {
                 if (edge.nodes[0] !== from && edge.nodes[1] !== from) {
                     continue
                 }
@@ -297,12 +295,12 @@ module.exports = class NavMesh {
             }
         }
 
-        let edge = this.portals.addEdge(from, to, uid); uid++
+        let edge = this.edges.addEdge(from, to, uid); uid++
         edge.toString = () => `[${from} -> ${to}]#${edge.data}`
         edge.rooms = []
 
         // fire the relevant event
-        Event.fire(this.addPortEvent, edge)
+        Event.fire(this.addEdgeEvent, edge)
 
         // return the edge
         return edge
@@ -312,10 +310,10 @@ module.exports = class NavMesh {
 
     addRoom(nodes) {
         // create room node in graph
-        let room = this.rooms.addNode(uid); uid++
+        let room = this.rooms.addNode()
         nodes.toString = () => ",".join( nodes )
         room.nodes = nodes
-        room.portals = []
+        room.paths = []
 
         // add room to all the nodes
         nodes.forEach(node => node.rooms.push(room))
@@ -323,16 +321,16 @@ module.exports = class NavMesh {
         // get the rooms edges
         for (let [from, to] of forEachCirc(nodes) ) {
             // get edge bettween endpoints
-            let edge = this.portals.getEdge(from, to)
+            let edge = this.edges.getEdge(from, to)
 
             // create the edge if it doesent exist
             if (!edge) {
-                edge = this.setUpPortal(from, to)
+                edge = this.setUpEdge(from, to)
             }
 
             // update the refrences
             edge.rooms.push(room)
-            room.portals.push(edge)
+            room.paths.push(edge)
         }
 
         // calculate the center of mass
@@ -353,15 +351,15 @@ module.exports = class NavMesh {
         }
 
         // remove room from edges refrences
-        for (let edge of room.portals) {
+        for (let edge of room.paths) {
             edge.rooms = edge.rooms.filter( item => item != room )
 
             // if the edge isnt connected to any rooms remove it
             if (edge.rooms.length == 0) {
-                this.portals.removeEdge(edge)
+                this.edges.removeEdge(edge)
 
                 // fire the relevant event
-                Event.fire(this.removePortEvent, edge)
+                Event.fire(this.removeEdgeEvent, edge)
             }
         }
 

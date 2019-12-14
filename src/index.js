@@ -21,7 +21,8 @@ let navMesh = new NavMesh()
 let navSprite = GraphSprite(navMesh)
 app.stage.addChild(navSprite)
 
-let [tl, tr, br, bl] = navMesh.makeShell([
+/*let [tl, tr, br, bl] = */
+navMesh.makeShell([
     {x: 0         , y: 0          },
     {x: innerWidth, y: 0          },
     {x: innerWidth, y: innerHeight},

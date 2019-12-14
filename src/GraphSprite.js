@@ -112,7 +112,7 @@ module.exports = function(navMesh, options) {
     }
 
     function removeLink(link) {
-        if (symbol in link) { // TODO: this is temperary
+        if (symbol in link) {
             link[symbol].clear()
             stage.removeChild( link[symbol] )
         }
