@@ -1,0 +1,1 @@
+Minimal navmesh example, unfished
