@@ -1,12 +1,24 @@
-const _     = require("lodash")
-const PIXI  = require("pixi.js")
-const Event = require("./EventMonger")
+import * as PIXI from "pixi.js"
+import { on } from "./utils"
+import NavMesh from "./NavMesh"
 
-module.exports = function(navMesh, options) {
+interface Options {
+    renderNodes?: boolean,
+    renderLinks?: boolean,
+
+    nodeRadius?: number,
+    nodeColor?: number,
+    nodeDraggable?: boolean,
+
+    linkWidth?: number,
+    linkColor?: number,
+}
+
+export default function GraphSprite(navMesh: NavMesh, options: Options) {
     let stage = new PIXI.Container()
     let symbol = Symbol()
 
-    options = _.defaults(options, {
+    options = {
         renderNodes: true,
         renderLinks: true,
 
@@ -15,8 +27,10 @@ module.exports = function(navMesh, options) {
         nodeDraggable: true,
 
         linkWidth: 6,
-        linkColor: 0x00ff00
-    })
+        linkColor: 0x00ff00,
+
+        ...options,
+    }
 
     stage.interactive = options.nodeDraggable
     stage.buttonMode  = options.nodeDraggable
@@ -134,35 +148,35 @@ module.exports = function(navMesh, options) {
 
     // node events
 
-    Event.on(navMesh.addNodeEvent, (node) => {
+    on(navMesh.addNodeEvent, (node) => {
         initNode(node)
     })
 
-    Event.on(navMesh.updateNodeEvent, (node) => {
+    on(navMesh.updateNodeEvent, (node) => {
         updateNode(node)
     })
 
     // portal events
 
-    Event.on(navMesh.addEdgeEvent, (link) => {
+    on(navMesh.addEdgeEvent, (link) => {
         initLink(link)
     })
 
-    Event.on(navMesh.updateEdgeEvent, (node) => {
+    on(navMesh.updateEdgeEvent, (node) => {
         updateLink(node)
     })
 
-    Event.on(navMesh.removeEdgeEvent, (link) => {
+    on(navMesh.removeEdgeEvent, (link) => {
         removeLink(link)
     })
 
     // room events
 
-    Event.on(navMesh.addRoomEvent, (room) => {
+    on(navMesh.addRoomEvent, (room) => {
         initRoom(room)
     })
 
-    Event.on(navMesh.removeRoomEvent, (room) => {
+    on(navMesh.removeRoomEvent, (room) => {
         removeNode(room)
     })
 

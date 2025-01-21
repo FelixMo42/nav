@@ -1,125 +1,31 @@
-const Graph  = require("struk.graph")
-const earcut = require("earcut")
-const Event  = require("./EventMonger")
+import earcut from "earcut"
+import { Event, fire, forEachCirc, Graph, orientation, Vec, intersect } from "./utils"
 
-let uid = 0
+export default class NavMesh {
+    rooms = new Graph()
+    edges = new Graph()
 
-function *forEachCirc(array) {
-    let length = array.length
-    for (let i = 0; i < length; i++) {
-        yield [
-            array[i],
-            array[ (i + 1) % length ]
-        ]
-    }
-}
+    addNodeEvent = Event()
+    addEdgeEvent = Event()
+    addRoomEvent = Event()
 
-function area(p1, p2, p3) {
-    return Math.abs((p1.x * (p2.y - p3.y) + p2.x * (p3.y - p1.y) + p3.x * (p1.y - p2.y)) / 2.0) 
-}
+    updateNodeEvent = Event()
+    updateEdgeEvent = Event()
+    updateRoomEvent = Event()
 
-function orientation(p1, p2, p3) {
-    let dir = (p2.y - p1.y) * (p3.x - p2.x) - (p2.x - p1.x) * (p3.y - p2.y)
+    removeNodeEvent = Event()
+    removeEdgeEvent = Event()
+    removeRoomEvent = Event()
 
-    if (dir == 0) { return 0 }
-
-    return (dir > 0) ? 1 : -1
-}
-
-function onSegment(p, q, r) {
-    if (q.x <= Math.max(p.x, r.x) && q.x >= Math.min(p.x, r.x) && 
-        q.y <= Math.max(p.y, r.y) && q.y >= Math.min(p.y, r.y)) {
-        return true
-    }
-  
-    return false
-}
-
-function intersect(p1, q1, p2, q2) {
-    //https://www.geeksforgeeks.org/check-if-two-given-line-segments-intersect/
-
-    let o1 = orientation(p1, q1, p2)
-    let o2 = orientation(p1, q1, q2)
-    let o3 = orientation(p2, q2, p1)
-    let o4 = orientation(p2, q2, q1)
-
-    if (o1 != o2 && o3 != o4) {
-        return true
-    }
-
-    if (o1 == 0 && onSegment(p1, p2, q1)) {
-        return true
-    }
-
-    // p1, q1 and q2 are colinear and q2 lies on segment p1q1 
-    if (o2 == 0 && onSegment(p1, q2, q1)) {
-        return true
-    }
-  
-    // p2, q2 and p1 are colinear and p1 lies on segment p2q2 
-    if (o3 == 0 && onSegment(p2, p1, q2)) {
-        return true
-    }
-  
-    // p2, q2 and q1 are colinear and q1 lies on segment p2q2 
-    if (o4 == 0 && onSegment(p2, q1, q2)) {
-        return true
-    }
- 
-    return false
-}
-
-function contains(p1, p2, p3, p) {
-    // Calculate area of full triangle ABC
-    let A = area(p1, p2, p3) 
-  
-    // Calculate area of partal triangle PBC  
-    let A1 = area(p, p2, p3) 
-    
-    // Calculate area of partal triangle APC  
-    let A2 = area(p1, p, p3) 
-    
-    // Calculate area of partal triangle ABP  
-    let A3 = area(p1, p2, p)
-
-    // do the area add up to the same thing?
-    return A == A1 + A2 + A3
-}
-
-module.exports = class NavMesh {
-    constructor(options) {
-        // store the options
-        this.options = options
-
-        // create the needed graphs
-        this.rooms = new Graph({trackNodes: true})
-        this.edges = new Graph({trackNodes: true})
-
-        // create events for the NavMesh
-        this.addNodeEvent = Event.newEvent()
-        this.addEdgeEvent = Event.newEvent()
-        this.addRoomEvent = Event.newEvent()
-
-        this.updateNodeEvent = Event.newEvent()
-        this.updateEdgeEvent = Event.newEvent()
-        this.updateRoomEvent = Event.newEvent()
-
-        this.removeNodeEvent = Event.newEvent()
-        this.removeEdgeEvent = Event.newEvent()
-        this.removeRoomEvent = Event.newEvent()
-    }
-
-    makeShell(shell) {
+    makeShell(shell: Vec[]) {
         // get the number of points in the shell
-        let shapeSize = shell.length
+        const shapeSize = shell.length
 
         // the shell needs to be a polygone, so at least 3 points
-        if (shapeSize < 3) {
-            return false
-        }
+        if (shapeSize < 3) return false
 
         // Create nodes for outside edge
-        let nodes = shell.map(pos => this.setUpNode(pos))
+        const nodes = shell.map(pos => this.setUpNode(pos))
 
         // turn the shell into polygones
         this.polygoneToRooms(nodes)
@@ -133,7 +39,7 @@ module.exports = class NavMesh {
         return nodes
     }
 
-    addNode(position) {
+    addNode(position: Vec) {
         // create the node
         let node = this.setUpNode(position)
 
@@ -152,23 +58,19 @@ module.exports = class NavMesh {
         return node
     }
 
-    addEdge(from, to) {
+    addEdge(from: Vec, to: Vec) {
         //TODO: make sure edge is wall
 
-        // if the edge all ready exist then were good, just return that
-        let edge = this.edges.getEdge(from, to)
-        if ( edge ) {
-            return edge
-        }
+        // If the edge all ready exist then were good, just return that
+        const edge = this.edges.getEdge(from, to)
+        if (edge) return edge
 
-        // keep track of the nodes on both side of the line and
-        // the rooms we visite
-        let left  = new Set([from, to])
-        let right = new Set([from, to])
-        let rooms = []
+        // Keep track of the nodes on both side of the line tand he rooms we visite
+        const left  = new Set([from, to])
+        const right = new Set([from, to])
+        const rooms = []
 
-
-        let addRoomNodes = (room) => {
+        const addRoomNodes = (room) => {
             rooms.push(room)
 
             for (let node of room.nodes) {
@@ -270,14 +172,15 @@ module.exports = class NavMesh {
     // set up //
 
     setUpNode({x, y}) {
-        let node = this.edges.addNode(uid); uid++
+        const node = this.edges.addNode()
+
         node.toString = () => `(${x},${y}#${node.data})`
         node.rooms = []
         node.x = x
         node.y = y
 
         // fire the relevant event
-        Event.fire(this.addNodeEvent, node)
+        fire(this.addNodeEvent, node)
 
         // return the node
         return node
@@ -300,7 +203,7 @@ module.exports = class NavMesh {
         edge.rooms = []
 
         // fire the relevant event
-        Event.fire(this.addEdgeEvent, edge)
+        fire(this.addEdgeEvent, edge)
 
         // return the edge
         return edge
@@ -338,7 +241,7 @@ module.exports = class NavMesh {
         room.y = nodes.reduce((y, node) => y + node.y, 0) / nodes.length
 
         // fire the relevant event
-        Event.fire(this.addRoomEvent, room)
+        fire(this.addRoomEvent, room)
 
         // return the room
         return room
@@ -359,7 +262,7 @@ module.exports = class NavMesh {
                 this.edges.removeEdge(edge)
 
                 // fire the relevant event
-                Event.fire(this.removeEdgeEvent, edge)
+                fire(this.removeEdgeEvent, edge)
             }
         }
 
@@ -367,7 +270,7 @@ module.exports = class NavMesh {
         this.rooms.removeNode(room)
 
         // fire the relevant event
-        Event.fire(this.removeRoomEvent, room)
+        fire(this.removeRoomEvent, room)
 
         // return the room
         return room
