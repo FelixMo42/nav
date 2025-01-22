@@ -1,10 +1,6 @@
-export function *forEachCirc<T>(array: T[]) {
-    let length = array.length
-    for (let i = 0; i < length; i++) {
-        yield [
-            array[i],
-            array[ (i + 1) % length ]
-        ]
+export function loop<T>(array: T[], cb: (a: T, b: T) => void) {
+    for (let i = 0; i < array.length; i++) {
+        cb(array[i], array[(i + 1) % array.length])
     }
 }
 
@@ -20,4 +16,8 @@ export function removeItem<T>(arr: T[], item: T) {
     }
 
     return arr.pop()
+}
+
+export function nmod<T>(arr: T[], n: number): T {
+    return arr[((n % arr.length) + arr.length) % arr.length]
 }

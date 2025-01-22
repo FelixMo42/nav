@@ -1,299 +1,235 @@
-import earcut from "earcut"
-import { Event, fire, forEachCirc, Graph, orientation, Vec, intersect } from "./utils"
+import { Event, fire, loop, Graph, Vec, intersects, contains, removeItem, isConvex, nmod } from "./utils"
+
+class Linker<A, B> {
+    keys = [] as A[]
+    values = new Set<B>
+    data = new Map<string, B[]>
+
+    add(key: A, val: B) {
+        const jkey = JSON.stringify(key)
+
+        if (!this.data.has(jkey)) {
+            this.keys.push(key)
+            this.data.set(jkey, [])
+        }
+
+        this.values.add(val)
+
+        this.data.get(jkey).push(val)
+    }
+
+    get(key: A): B[] {
+        const jkey = JSON.stringify(key)
+        return this.data.get(jkey) ?? []
+    }
+
+    replace(key: A, org: B, val: B) {
+        // Replace it in the array
+        const arr = this.get(key)
+        for (let i = 0; i < arr.length; i++) {
+            if (arr[i] === org) arr[i] = val
+        }
+
+        // Update the values list
+        this.values.delete(org)
+        this.values.add(val)
+    }
+}
 
 export default class NavMesh {
-    rooms = new Graph()
-    edges = new Graph()
+    // Structs
+    edges = new Graph<Vec>()
+    zones = new Linker<[Vec, Vec], Vec[]>()
+    polys = new Linker<Vec, Vec[]>()
+    
+    // Events
+    addNodeEvent = Event<Vec>()
+    addEdgeEvent = Event<[Vec, Vec]>()
+    addZoneEvent = Event<Vec[]>()
 
-    addNodeEvent = Event()
-    addEdgeEvent = Event()
-    addRoomEvent = Event()
-
-    updateNodeEvent = Event()
-    updateEdgeEvent = Event()
-    updateRoomEvent = Event()
-
-    removeNodeEvent = Event()
-    removeEdgeEvent = Event()
-    removeRoomEvent = Event()
-
-    makeShell(shell: Vec[]) {
-        // get the number of points in the shell
-        const shapeSize = shell.length
-
-        // the shell needs to be a polygone, so at least 3 points
-        if (shapeSize < 3) return false
-
-        // Create nodes for outside edge
-        const nodes = shell.map(pos => this.setUpNode(pos))
-
-        // turn the shell into polygones
-        this.polygoneToRooms(nodes)
-
-        // Make the sides unwalkable
-        // for (let i = 0; i < shapeSize; i++) {
-        //     this.addEdge( nodes[i], nodes[(i + 1) % shapeSize] )
-        // }
-
-        // return the nodes
-        return nodes
+    setBounds(size: Vec) {
+        loop([
+            new Vec(0, 0),
+            new Vec(0, size.y),
+            new Vec(size.x, size.y),
+            new Vec(size.x, 0),
+        ], (a, b) => {
+            this.edges.$vert.set(a, [])
+            this.edges.link(a, b)
+        })
     }
 
-    addNode(position: Vec) {
-        // create the node
-        let node = this.setUpNode(position)
-
-        // get the room containing the position
-        let room = this.getRoomContaining(position)
-
-        // remove the old room
-        this.removeRoom(room)
-
-        // split the room into parts and the new rooms
-        for (let [node1, node2] of forEachCirc(room.nodes)) {
-            this.addRoom([node1, node2, node])
-        }
-
-        // return the node
-        return node
+    add(poly: Vec[]) {
+        loop(poly, (a, b) => {
+            this.polys.add(a, poly)
+            this.edges.link(a, b)
+        })
     }
 
-    addEdge(from: Vec, to: Vec) {
-        //TODO: make sure edge is wall
+    /**
+     * Compute all the zones
+     */
+    compute() {
+        // STEP 1: Compute inital zones
+        this.step1()
 
-        // If the edge all ready exist then were good, just return that
-        const edge = this.edges.getEdge(from, to)
-        if (edge) return edge
+        // STEP 2: Find & split gaps
+        this.findGaps()
 
-        // Keep track of the nodes on both side of the line tand he rooms we visite
-        const left  = new Set([from, to])
-        const right = new Set([from, to])
-        const rooms = []
-
-        const addRoomNodes = (room) => {
-            rooms.push(room)
-
-            for (let node of room.nodes) {
-                if (orientation(from, to, node) > 0) {
-                    left.add( node )
-                } else {
-                    right.add( node )
-                }
-            }
-        }
-
-        let procRoom = (room, source) => {
-            // look throught all the edges in the room
-            for (let edge of room.paths) {
-                // we came from this edge, dont cheack it again
-                if (edge === source) { continue }
-
-                // weve reached are destination!
-                if (edge.nodes[0] == to) {
-                    addRoomNodes(room)
-                    return true
-                }
-
-                // do we cross a line
-                if ( intersect(...edge.nodes, from, to) ) {
-                    let nextRoom =
-                        edge.rooms[0] === room ?
-                            edge.rooms[1] :
-                            edge.rooms[0]
-
-                    addRoomNodes(nextRoom)
-                        
-                    return procRoom(nextRoom, edge)
-                }
-            }
-
-            // our mission was a failur, reedge that back
-            return false
-        }
-
-        // figure out what conected room the line goes throught or if
-        // they are in the same room. Then recusivly get all the rooms.
-        for (let room of from.rooms) {
-            for (let edge of room.paths) {
-                // The target node is in the same room as the origin
-                if (edge.nodes[0] == to) {
-                    addRoomNodes(room)
-                    break
-                }
-
-                // skip it if edge leads to origin node
-                if (edge.nodes[0] == from || edge.nodes[1] == from) {
-                    continue
-                }
-
-                // do we cross a line
-                if ( intersect(...edge.nodes, from, to) ) {
-                    let nextRoom =
-                        edge.rooms[0] === room ?
-                            edge.rooms[1] :
-                            edge.rooms[0]
-
-                    addRoomNodes(room)    
-                    procRoom(nextRoom, edge)
-                }
-            }
-        }
-
-        // delete all the rooms we go throught
-        for (let room of rooms) {
-            this.removeRoom( room )
-        }
-
-        // Its safe, we can create the edge
-        edge = this.setUpEdge(from, to)
-
-        // turn the two sides into rooms
-        this.polygoneToRooms( [...left]  )
-        this.polygoneToRooms( [...right] )
-
-        // return the edge
-        return edge
+        // STEP 3: Merge zones
+        this.mergeZones()
+        
+        // STEP 4: Profit
+        this.zones.values.forEach(zone => fire(this.addZoneEvent, zone))
     }
 
-    // get it //
+    private mergeZones() {
+        for (const edge of this.zones.keys) {
+            // Get two adjacest zones
+            const zones = this.zones.get(edge)
+            if (zones.length < 2) continue
 
-    getRoomContaining(position) {
-        for (let room of this.rooms.allNodes()) {
-            if ( contains(...room.nodes, position) ) {
-                return room
+            // Compute the merged zones
+            const mergedZone = merge(zones[0], zones[1], edge)
+
+            // Check if it's legal
+            if (!isConvex(mergedZone)) continue
+
+            // Replace the old zone
+            for (const zone of zones) {
+                loop(zone, (a, b) => {
+                    const edge = a.sort(b)
+                    this.zones.replace(edge, zone, mergedZone)
+                })
             }
         }
     }
 
-    /////////////////
-    // PRIVATE API //
-    /////////////////
+    private findGaps() {
+        const edges = []
 
-    // set up //
+        for (const edge of this.zones.keys) {
+            // Every edge should be part of two zones, unless:
+            //  1) It's at the edge of the world
+            //  2) It's part of an obstacle 
+            if (this.zones.get(edge).length === 2) continue
 
-    setUpNode({x, y}) {
-        const node = this.edges.addNode()
+            // If both points are part of the same polygone, then it's a poly vertex
+            // NOTE: This will not be true for more complex shapes
+            if (this.polys.get(edge[0])[0] === this.polys.get(edge[1])[0]) continue
 
-        node.toString = () => `(${x},${y}#${node.data})`
-        node.rooms = []
-        node.x = x
-        node.y = y
+            // We can skip the edge of the world case cause the initial zones
+            // don't includes them, so it's impossible for them to be here
+            edges.push(edge)
+        }
 
-        // fire the relevant event
-        fire(this.addNodeEvent, node)
+        while (edges.length > 0) {
+            const ps = new Set<Vec>(edges.pop())
 
-        // return the node
-        return node
+            while (true) {
+                const edge = edges.find(edge => ps.has(edge[0]) || ps.has(edge[1]))
+                if (!edge) break
+                removeItem(edges, edge)
+                ps.add(edge[0]).add(edge[1])
+            }
+
+            this.addZone([...ps.values()])
+        }
     }
 
-    setUpEdge(from, to) {
-        for (let room of this.rooms.allNodes()) {
-            for (let edge of room.paths) {
-                if (edge.nodes[0] !== from && edge.nodes[1] !== from) {
-                    continue
+    private addZone(zone: Vec[]) {
+        // Add this zone to each edge
+        loop(zone, (a, b) => this.zones.add(a.sort(b), zone))
+
+        // Tell the world about it!
+        // fire(this.addZoneEvent, zone)
+    }
+
+    private splitGaps() {}
+
+    private step1() {
+        for (const [a, b] of this.edges.$edge) {
+            // TODO: Check if I'm already in a zone
+
+            for (const c of this.edges.verts()) {
+                // We need a triangle, not a line
+                if (c === a) continue
+                if (c === b) continue
+
+                // Make sure this point outward, and not into the polygone
+                if (this.polys.get(a).length > 0) {
+                    if (contains(this.polys.get(a)[0], a.mid(c))) continue
+                    if (contains(this.polys.get(b)[0], b.mid(c))) continue
                 }
-                if (edge.nodes[0] !== to && edge.nodes[1] !== to) {
-                    continue
-                }
+
+                // The area inside the triangle must be clear
+                if (!this.clear(a, b, c)) continue
+
+                // Finally: we've found a zone!
+                this.addZone([a, b, c])
+                
+                // We're done here, no need to keep looking
+                break
             }
         }
-
-        let edge = this.edges.addEdge(from, to, uid); uid++
-        edge.toString = () => `[${from} -> ${to}]#${edge.data}`
-        edge.rooms = []
-
-        // fire the relevant event
-        fire(this.addEdgeEvent, edge)
-
-        // return the edge
-        return edge
     }
 
-    // room //
+    /**
+     * Check to make sure there's nothing inside of the zone
+     */
+    private clear(a: Vec, b: Vec, c: Vec) {
+        // Make sure there are no points inside of this triangle
+        for (const vert of this.edges.verts()) {
+            if (a === vert) continue
+            if (b === vert) continue
+            if (c === vert) continue
 
-    addRoom(nodes) {
-        // create room node in graph
-        let room = this.rooms.addNode()
-        nodes.toString = () => ",".join( nodes )
-        room.nodes = nodes
-        room.paths = []
-
-        // add room to all the nodes
-        nodes.forEach(node => node.rooms.push(room))
-
-        // get the rooms edges
-        for (let [from, to] of forEachCirc(nodes) ) {
-            // get edge bettween endpoints
-            let edge = this.edges.getEdge(from, to)
-
-            // create the edge if it doesent exist
-            if (!edge) {
-                edge = this.setUpEdge(from, to)
-            }
-
-            // update the refrences
-            edge.rooms.push(room)
-            room.paths.push(edge)
+            if (contains([a, b, c], vert)) return false
         }
 
-        // calculate the center of mass
-        room.x = nodes.reduce((x, node) => x + node.x, 0) / nodes.length
-        room.y = nodes.reduce((y, node) => y + node.y, 0) / nodes.length
+        // Make sure we don't overlap with any walls
+        for (const wall of this.edges.$edge) {
+            if (wall.includes(c)) continue
 
-        // fire the relevant event
-        fire(this.addRoomEvent, room)
+            if (!wall.includes(a) && intersects([a, c], wall)) return false
+            if (!wall.includes(b) && intersects([b, c], wall)) return false
+        }
 
-        // return the room
-        return room
+        // Make sure we don't overlap with any existing zones
+        for (const edge of this.zones.keys) {
+            if (edge.includes(c)) continue
+
+            if (!edge.includes(b) && intersects([b, c], edge)) return false
+            if (!edge.includes(a) && intersects([a, c], edge)) return false
+        }
+
+        // It's clear!
+        return true
+    }
+}
+
+/**
+ * Merge two polygons by given edge
+ * NOTE: They must share the edge!
+ */
+function merge(a: Vec[], b: Vec[], edge: [Vec, Vec]) {
+    const merged = []
+
+    merged.push(edge[0])
+
+    const start0 = a.findIndex(vert => vert === edge[0])
+    const d0 = nmod(a, start0 + 1) === edge[1] ? -1 : 1
+    for (let i = 1; i < a.length - 1; i++) {
+        merged.push(nmod(a, start0 + i * d0))
     }
 
-    removeRoom(room) {
-        // remove room from nodes refrences
-        for (let node of room.nodes) {
-            node.rooms = node.rooms.filter( item => item != room )
-        }
+    merged.push(edge[1])
 
-        // remove room from edges refrences
-        for (let edge of room.paths) {
-            edge.rooms = edge.rooms.filter( item => item != room )
-
-            // if the edge isnt connected to any rooms remove it
-            if (edge.rooms.length == 0) {
-                this.edges.removeEdge(edge)
-
-                // fire the relevant event
-                fire(this.removeEdgeEvent, edge)
-            }
-        }
-
-        // remove room from rooms graph
-        this.rooms.removeNode(room)
-
-        // fire the relevant event
-        fire(this.removeRoomEvent, room)
-
-        // return the room
-        return room
+    const start1 = b.findIndex(vert => vert === edge[1])
+    const d1 = nmod(b, start1 + 1) === edge[0] ? -1 : 1
+    for (let i = 1; i < b.length - 1; i++) {
+        merged.push(nmod(b, start1 + i * d1))
     }
 
-    polygoneToRooms(nodes) {
-        // make a earcut compatible list of positions
-        let positions = []
-        for (let {x, y} of nodes) {
-            positions.push(x)
-            positions.push(y)
-        }
-
-        // use earcut for polygon triangulation
-        let triangles = earcut(positions)
-
-        // turn triangles into rooms
-        for (let i = 0; i < triangles.length; i += 3) {
-            this.addRoom([
-                nodes[ triangles[i + 0] ],
-                nodes[ triangles[i + 1] ],
-                nodes[ triangles[i + 2] ]
-            ])
-        }
-    }
+    return merged
 }

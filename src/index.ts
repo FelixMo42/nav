@@ -1,42 +1,33 @@
 import * as PIXI from "pixi.js"
-import GraphSprite from "./GraphSprite"
-import NavMesh from "./NavMesh"
+import NavMeshDebugView from "./NavMeshDebugView"
 import { Vec } from "./utils"
+import NavMesh from "./NavMesh"
 
-const app = new PIXI.Application({
-    width: window.innerWidth,
-    height: window.innerHeight
-})
+async function main() {
+    const app = new PIXI.Application()
+    await app.init({ resizeTo: window })
+    document.body.appendChild(app.canvas)
 
-document.body.appendChild(app.view)
+    const nav = new NavMesh()
+    app.stage.addChild(NavMeshDebugView(nav))
 
-const innerWidth = window.innerWidth
-const innerHeight = window.innerHeight
+    nav.setBounds(new Vec(window.innerWidth, window.innerHeight))
+    
+    nav.add([
+        new Vec(200, 200),
+        new Vec(200, 400),
+        new Vec(400, 400),
+        new Vec(400, 200),
+    ])
 
-let navMesh = new NavMesh()
+    nav.add([
+        new Vec(450, 450),
+        new Vec(450, 650),
+        new Vec(650, 650),
+        new Vec(650, 450),
+    ])
 
-let navSprite = GraphSprite(navMesh, {})
-app.stage.addChild(navSprite)
+    nav.compute()
+}
 
-navMesh.makeShell([
-    new Vec(0         , 0          ),
-    new Vec(innerWidth, 0          ),
-    new Vec(innerWidth, innerHeight),
-    new Vec(0         , innerHeight)
-])
-
-// add content
-
-let t1 = navMesh.addNode(new Vec(300, 300))
-let t2 = navMesh.addNode(new Vec(300, 500))
-let t3 = navMesh.addNode(new Vec(500, 300))
-
-navMesh.addEdge(t1, t2)
-navMesh.addEdge(t1, t3)
-
-// let n1 = navMesh.addNode(800, 800, "n1")
-// let n2 = navMesh.addNode(800, 600, "n2")
-// let n3 = navMesh.addNode(600, 800, "n3")
-
-// navMesh.addEdge(n1, n2, {})
-// navMesh.addEdge(n1, n3, {})
+main()

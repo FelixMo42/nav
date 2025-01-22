@@ -7,16 +7,32 @@ interface Node<T> {
 
 interface Edge<T> {
     nodes: [Node<T>, Node<T>],
-    data: T
 }
 
 export class Graph<T> {
+    $vert = new Map<T, T[]>
+    $edge = [] as Array<[T, T]>
+
     /**
-     * Adds a node with given data to graph.
+     * Adds a link to the graph
      */
-    addNode(data: T) {
-        const node = { data, edges: [] }
-        return node
+    link(a: T, b: T) {
+        this.$get(a).push(b)
+        this.$get(b).push(a)
+
+        this.$edge.push([a, b])
+    }
+
+    verts() {
+        return this.$vert.keys()
+    }
+
+    $get(vert: T) {
+        if (!this.$vert.has(vert)) {
+            this.$vert.set(vert, [])
+        }
+
+        return this.$vert.get(vert)
     }
 
     /**
@@ -31,14 +47,11 @@ export class Graph<T> {
     /**
      * Adds edge to graph
      */
-    addEdge(from: Node<T>, to: Node<T>, data: T) {
-        const edge: Edge<T> = {
-            nodes: [from, to],
-            data: data
-        }
+    addEdge(a: Node<T>, b: Node<T>) {
+        const edge: Edge<T> = { nodes: [a, b] }
 
-        from.edges.push(edge)
-        to.edges.push(edge)
+        a.edges.push(edge)
+        b.edges.push(edge)
 
         return edge
     }

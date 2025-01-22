@@ -51,4 +51,26 @@ export class Vec {
     div(c: number) {
         return new Vec(this.x / c, this.y / c)
     }
+
+    /**
+     * Get the mid point between two vectors
+     */
+    mid(b: Vec) {
+        return new Vec(
+            (this.x + b.x) / 2,
+            (this.y + b.y) / 2,
+        )
+    }
+
+    sort(b: Vec): [Vec, Vec] {
+        if (this.x > b.x) return [this, b]
+        if (this.x < b.x) return [b, this]
+        if (this.y > b.y) return [this, b]
+        if (this.y < b.y) return [b, this]
+        return [this, b]
+    }
+
+    toString() {
+        return `(${this.x},${this.y})`
+    }
 }

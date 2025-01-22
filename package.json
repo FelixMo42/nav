@@ -4,21 +4,18 @@
     "description": "",
     "main": "src/index.js",
     "scripts": {
-        "start": "watchify . -o build/js/bundle.js --debug",
+        "start": "esbuild src/index.ts --outfile=build/js/bundle.js --bundle --watch --servedir=build",
         "build": "browserify index.js -o bundle.js",
         "test": "mocha"
     },
     "author": "Felix Moses <@FelixMo42>",
     "license": "ISC",
     "dependencies": {
-        "browserify": "^16.5.0",
         "earcut": "3.0.1",
+        "esbuild": "0.24.2",
         "pixi.js": "8.6.6"
     },
     "devDependencies": {
-        "@types/earcut": "^3.0.0",
-        "chai": "^4.2.0",
-        "mocha": "^6.2.2",
-        "watchify": "^3.11.1"
+        "@types/earcut": "3.0.0"
     }
 }
