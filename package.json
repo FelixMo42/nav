@@ -4,18 +4,13 @@
     "description": "",
     "main": "src/index.js",
     "scripts": {
-        "start": "esbuild src/index.ts --outfile=build/js/bundle.js --bundle --watch --sourcemap --servedir=build",
-        "build": "browserify index.js -o bundle.js",
-        "test": "mocha"
+        "start": "esbuild src/index.ts --outfile=build/js/bundle.js --bundle --watch --servedir=build",
+        "build": "esbuild src/index.ts --outfile=build/js/bundle.js --bundle --minify"
     },
     "author": "Felix Moses <@FelixMo42>",
     "license": "ISC",
     "dependencies": {
-        "earcut": "3.0.1",
         "esbuild": "0.24.2",
         "pixi.js": "8.6.6"
-    },
-    "devDependencies": {
-        "@types/earcut": "3.0.0"
     }
 }
