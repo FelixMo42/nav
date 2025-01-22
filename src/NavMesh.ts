@@ -70,16 +70,16 @@ export default class NavMesh {
      * Compute all the zones
      */
     compute() {
-        // STEP 1: Compute inital zones
-        this.step1()
+        // STEP 1: Add inital zones
+        this.edges.$edge.forEach(edge => this.addZoneToEdge(edge))
 
         // STEP 2: Find & split gaps
-        this.findGaps()
+        this.findGaps().forEach(edge => this.addZoneToEdge(edge))
 
         // STEP 3: Merge zones
         this.mergeZones()
         
-        // STEP 4: Profit
+        // STEP 4: Profit (aka, build a* graph)
         this.zones.values.forEach(zone => fire(this.addZoneEvent, zone))
     }
 
@@ -106,7 +106,7 @@ export default class NavMesh {
     }
 
     private findGaps() {
-        const edges = []
+        const gaps = []
 
         for (const edge of this.zones.keys) {
             // Every edge should be part of two zones, unless:
@@ -120,58 +120,45 @@ export default class NavMesh {
 
             // We can skip the edge of the world case cause the initial zones
             // don't includes them, so it's impossible for them to be here
-            edges.push(edge)
+            gaps.push(edge)
         }
 
-        while (edges.length > 0) {
-            const ps = new Set<Vec>(edges.pop())
-
-            while (true) {
-                const edge = edges.find(edge => ps.has(edge[0]) || ps.has(edge[1]))
-                if (!edge) break
-                removeItem(edges, edge)
-                ps.add(edge[0]).add(edge[1])
-            }
-
-            this.addZone([...ps.values()])
-        }
+        return gaps
     }
 
     private addZone(zone: Vec[]) {
         // Add this zone to each edge
         loop(zone, (a, b) => this.zones.add(a.sort(b), zone))
-
-        // Tell the world about it!
-        // fire(this.addZoneEvent, zone)
     }
 
-    private splitGaps() {}
+    private addZoneToEdge([a, b]: [Vec, Vec]) {
+        // We're already in two zones, you can't be in any more!
+        if (this.zones.get(a.sort(b)).length === 2) return
+
+        for (const c of this.edges.verts()) {
+            // We need a triangle, not a line
+            if (c === a) continue
+            if (c === b) continue
+
+            // Make sure this is not already a zone!
+            if (this.zones.get(a.sort(b)).some(zone => zone.includes(c))) continue
+
+            // Make sure this point outward, and not into the polygone
+            if (this.polys.get(a).length > 0 && this.polys.get(b).length > 0) {
+                if (contains(this.polys.get(a)[0], a.mid(c))) continue
+                if (contains(this.polys.get(b)[0], b.mid(c))) continue
+            }
+
+            // The area inside the triangle must be clear
+            if (!this.clear(a, b, c)) continue
+
+            // Finally: we've found a zone!
+            return this.addZone([a, b, c])
+        }
+    }
 
     private step1() {
-        for (const [a, b] of this.edges.$edge) {
-            // TODO: Check if I'm already in a zone
-
-            for (const c of this.edges.verts()) {
-                // We need a triangle, not a line
-                if (c === a) continue
-                if (c === b) continue
-
-                // Make sure this point outward, and not into the polygone
-                if (this.polys.get(a).length > 0) {
-                    if (contains(this.polys.get(a)[0], a.mid(c))) continue
-                    if (contains(this.polys.get(b)[0], b.mid(c))) continue
-                }
-
-                // The area inside the triangle must be clear
-                if (!this.clear(a, b, c)) continue
-
-                // Finally: we've found a zone!
-                this.addZone([a, b, c])
-                
-                // We're done here, no need to keep looking
-                break
-            }
-        }
+        
     }
 
     /**

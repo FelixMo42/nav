@@ -13,21 +13,32 @@ async function main() {
 
     nav.setBounds(new Vec(window.innerWidth, window.innerHeight))
     
-    nav.add([
-        new Vec(200, 200),
-        new Vec(200, 400),
-        new Vec(400, 400),
-        new Vec(400, 200),
-    ])
+    const cubes = [
+        [100, 100],
+        [120, 420],
+        [440, 440],
+        [460, 160],
+    ]
 
-    nav.add([
-        new Vec(450, 450),
-        new Vec(450, 650),
-        new Vec(650, 650),
-        new Vec(650, 450),
-    ])
-
+    cubes.forEach(cube => {
+        nav.add([
+            new Vec(cube[0], cube[1]),
+            new Vec(cube[0], cube[1] + 200),
+            new Vec(cube[0] + 200, cube[1] + 200),
+            new Vec(cube[0] + 200, cube[1]),
+        ])
+    })
+    
     nav.compute()
+}
+
+function overlaps(a: [number, number]) {
+    return (b: [number, number]) => {
+        return (
+            a[0] < b[0] && b[0] < a[0] + 200 &&
+            a[1] < b[1] && b[1] < a[1] + 200
+        )
+    }
 }
 
 main()

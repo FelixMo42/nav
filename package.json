@@ -4,7 +4,7 @@
     "description": "",
     "main": "src/index.js",
     "scripts": {
-        "start": "esbuild src/index.ts --outfile=build/js/bundle.js --bundle --watch --servedir=build",
+        "start": "esbuild src/index.ts --outfile=build/js/bundle.js --bundle --watch --sourcemap --servedir=build",
         "build": "browserify index.js -o bundle.js",
         "test": "mocha"
     },

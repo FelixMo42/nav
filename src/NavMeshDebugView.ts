@@ -6,12 +6,12 @@ export default function NavMeshDebugView(navMesh: NavMesh) {
     const stage = new PIXI.Container()
 
     on(navMesh.addEdgeEvent, ([a, b]) => {
-        stage.addChild(new PIXI.Graphics())
+        stage.addChild(new PIXI.Graphics({ alpha: 0.25 }))
             .moveTo(a.x, a.y)
             .lineTo(b.x, b.y)
             .stroke({
                 color: "blue",
-                width: 5,
+                width: 10,
             })
     })
 
@@ -20,7 +20,7 @@ export default function NavMeshDebugView(navMesh: NavMesh) {
             .poly(zone.flatMap(vec => [vec.x, vec.y]))
             .stroke({
                 color: 0x666666,
-                width: 2,
+                pixelLine: true,
             })
         
         const point = midpoint(zone)
