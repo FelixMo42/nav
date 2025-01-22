@@ -1,222 +1,54 @@
-import { Event, fire, loop, Graph, Vec, intersects, contains, removeItem, isConvex, nmod } from "./utils"
+import { midpoint, Poly, Vec, Pather, contains } from "./utils"
 
-class Linker<A, B> {
-    keys = [] as A[]
-    values = new Set<B>
-    data = new Map<string, B[]>
+export class NavMesh extends Pather<Vec> {
+    paths = new Map<Vec, Vec[]>()
+    cells = new Map<Vec, Poly>()
 
-    add(key: A, val: B) {
-        const jkey = JSON.stringify(key)
+    constructor(raw: Map<Poly, Poly[]>) {
+        super()
 
-        if (!this.data.has(jkey)) {
-            this.keys.push(key)
-            this.data.set(jkey, [])
+        // First: we need static midpoints for all the cells
+        const ps = new Map<Poly, Vec>() 
+        for (const cell of raw.keys()) {
+            const center = midpoint(cell)
+            this.cells.set(center, cell)
+            ps.set(cell, center)
         }
 
-        this.values.add(val)
-
-        this.data.get(jkey).push(val)
-    }
-
-    get(key: A): B[] {
-        const jkey = JSON.stringify(key)
-        return this.data.get(jkey) ?? []
-    }
-
-    replace(key: A, org: B, val: B) {
-        // Replace it in the array
-        const arr = this.get(key)
-        for (let i = 0; i < arr.length; i++) {
-            if (arr[i] === org) arr[i] = val
+        // Second: convert paths of Polygons into paths of Vecs
+        for (const [cell, paths] of raw.entries()) {
+            this.paths.set(ps.get(cell), paths.map(c => ps.get(c)))
         }
-
-        // Update the values list
-        this.values.delete(org)
-        this.values.add(val)
-    }
-}
-
-export default class NavMesh {
-    // Structs
-    edges = new Graph<Vec>()
-    zones = new Linker<[Vec, Vec], Vec[]>()
-    polys = new Linker<Vec, Vec[]>()
-    
-    // Events
-    addNodeEvent = Event<Vec>()
-    addEdgeEvent = Event<[Vec, Vec]>()
-    addZoneEvent = Event<Vec[]>()
-
-    setBounds(size: Vec) {
-        loop([
-            new Vec(0, 0),
-            new Vec(0, size.y),
-            new Vec(size.x, size.y),
-            new Vec(size.x, 0),
-        ], (a, b) => {
-            this.edges.$vert.set(a, [])
-            this.edges.link(a, b)
-        })
     }
 
-    add(poly: Vec[]) {
-        loop(poly, (a, b) => {
-            this.polys.add(a, poly)
-            this.edges.link(a, b)
-        })
-    }
-
-    /**
-     * Compute all the zones
-     */
-    compute() {
-        // STEP 1: Add inital zones
-        this.edges.$edge.forEach(edge => this.addZoneToEdge(edge))
-
-        // STEP 2: Find & split gaps
-        this.findGaps().forEach(edge => this.addZoneToEdge(edge))
-
-        // STEP 3: Merge zones
-        this.mergeZones()
-        
-        // STEP 4: Profit (aka, build a* graph)
-        this.zones.values.forEach(zone => fire(this.addZoneEvent, zone))
-    }
-
-    private mergeZones() {
-        for (const edge of this.zones.keys) {
-            // Get two adjacest zones
-            const zones = this.zones.get(edge)
-            if (zones.length < 2) continue
-
-            // Compute the merged zones
-            const mergedZone = merge(zones[0], zones[1], edge)
-
-            // Check if it's legal
-            if (!isConvex(mergedZone)) continue
-
-            // Replace the old zone
-            for (const zone of zones) {
-                loop(zone, (a, b) => {
-                    const edge = a.sort(b)
-                    this.zones.replace(edge, zone, mergedZone)
-                })
+    getCell(coord: Vec) {
+        for (const [cell, poly] of this.cells.entries()) {
+            if (contains(poly, coord)) {
+                return cell
             }
         }
     }
 
-    private findGaps() {
-        const gaps = []
+    path(a: Vec, b: Vec) {
+        // Get the cells for the start and end positions
+        const ca = this.getCell(a)
+        const cb = this.getCell(b)
+        if (!ca || !cb) return []
 
-        for (const edge of this.zones.keys) {
-            // Every edge should be part of two zones, unless:
-            //  1) It's at the edge of the world
-            //  2) It's part of an obstacle 
-            if (this.zones.get(edge).length === 2) continue
+        const path = super.path(ca, cb)
 
-            // If both points are part of the same polygone, then it's a poly vertex
-            // NOTE: This will not be true for more complex shapes
-            if (this.polys.get(edge[0])[0] === this.polys.get(edge[1])[0]) continue
-
-            // We can skip the edge of the world case cause the initial zones
-            // don't includes them, so it's impossible for them to be here
-            gaps.push(edge)
-        }
-
-        return gaps
+        return [
+            a,
+            ...path,
+            b
+        ]
     }
 
-    private addZone(zone: Vec[]) {
-        // Add this zone to each edge
-        loop(zone, (a, b) => this.zones.add(a.sort(b), zone))
+    neighbors(vec: Vec): Vec[] {
+        return this.paths.get(vec)
     }
 
-    private addZoneToEdge([a, b]: [Vec, Vec]) {
-        // We're already in two zones, you can't be in any more!
-        if (this.zones.get(a.sort(b)).length === 2) return
-
-        for (const c of this.edges.verts()) {
-            // We need a triangle, not a line
-            if (c === a) continue
-            if (c === b) continue
-
-            // Make sure this is not already a zone!
-            if (this.zones.get(a.sort(b)).some(zone => zone.includes(c))) continue
-
-            // Make sure this point outward, and not into the polygone
-            if (this.polys.get(a).length > 0 && this.polys.get(b).length > 0) {
-                if (contains(this.polys.get(a)[0], a.mid(c))) continue
-                if (contains(this.polys.get(b)[0], b.mid(c))) continue
-            }
-
-            // The area inside the triangle must be clear
-            if (!this.clear(a, b, c)) continue
-
-            // Finally: we've found a zone!
-            return this.addZone([a, b, c])
-        }
+    distance(a: Vec, b: Vec): number {
+        return a.distance(b)
     }
-
-    private step1() {
-        
-    }
-
-    /**
-     * Check to make sure there's nothing inside of the zone
-     */
-    private clear(a: Vec, b: Vec, c: Vec) {
-        // Make sure there are no points inside of this triangle
-        for (const vert of this.edges.verts()) {
-            if (a === vert) continue
-            if (b === vert) continue
-            if (c === vert) continue
-
-            if (contains([a, b, c], vert)) return false
-        }
-
-        // Make sure we don't overlap with any walls
-        for (const wall of this.edges.$edge) {
-            if (wall.includes(c)) continue
-
-            if (!wall.includes(a) && intersects([a, c], wall)) return false
-            if (!wall.includes(b) && intersects([b, c], wall)) return false
-        }
-
-        // Make sure we don't overlap with any existing zones
-        for (const edge of this.zones.keys) {
-            if (edge.includes(c)) continue
-
-            if (!edge.includes(b) && intersects([b, c], edge)) return false
-            if (!edge.includes(a) && intersects([a, c], edge)) return false
-        }
-
-        // It's clear!
-        return true
-    }
-}
-
-/**
- * Merge two polygons by given edge
- * NOTE: They must share the edge!
- */
-function merge(a: Vec[], b: Vec[], edge: [Vec, Vec]) {
-    const merged = []
-
-    merged.push(edge[0])
-
-    const start0 = a.findIndex(vert => vert === edge[0])
-    const d0 = nmod(a, start0 + 1) === edge[1] ? -1 : 1
-    for (let i = 1; i < a.length - 1; i++) {
-        merged.push(nmod(a, start0 + i * d0))
-    }
-
-    merged.push(edge[1])
-
-    const start1 = b.findIndex(vert => vert === edge[1])
-    const d1 = nmod(b, start1 + 1) === edge[0] ? -1 : 1
-    for (let i = 1; i < b.length - 1; i++) {
-        merged.push(nmod(b, start1 + i * d1))
-    }
-
-    return merged
 }

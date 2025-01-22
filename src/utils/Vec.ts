@@ -44,6 +44,10 @@ export class Vec {
         return this.div(m)
     }
 
+    distance(b: Vec) {
+        return Math.floor((this.x - b.x) ** 2 + (this.y - b.y) ** 2)
+    }
+
     mul(c: number) {
         return new Vec(this.x * c, this.y * c)
     }

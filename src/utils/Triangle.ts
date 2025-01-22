@@ -1,5 +1,7 @@
 import { Vec } from "../utils"
 
+export type Poly = Vec[] 
+
 /**
  * Calculate the area of a triangle
  */

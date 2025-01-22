@@ -1,7 +1,7 @@
-export * from './Vec';
-export * from './Event';
-export * from './Triangle';
-export * from './Graph';
+export * from './Vec'
+export * from './Triangle'
+export * from './Graph'
+export * from './Pather'
 
-export * from './misc';
+export * from './misc'
 
